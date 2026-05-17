@@ -64,3 +64,10 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+
+### Things i haven't done
+* created a deployment script
+* created a .env file
+* created a remapping file
+* writen tests
+* @audit

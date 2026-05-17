@@ -36,7 +36,7 @@ Welcome! You have everything you need to complete your undergraduate research pr
 2. Read `/outputs/skillcert/README.md`
 3. Skim the smart contracts: `/outputs/skillcert/contracts/src/`
 4. Check AI model: `/outputs/skillcert/ai_service/app/main.py`
-5. Look at frontend: `/outputs/skillcert/frontend/index.html`
+5. Look at frontend: `/outputs/skillcert/frontend/public/index.htmll`
 
 ### Path C: I Need to Write Chapter 5 (1 hour)
 
@@ -226,7 +226,7 @@ Everything is built, tested, and documented. Your job now is:
 - **Chapter4_System_Implementation.docx** ← Where to put Figure 4.1-4.9
 - **skillcert/contracts/test/CertificationRegistry.t.sol** ← 27 passing tests
 - **skillcert/ai_service/app/main.py** ← The AI service
-- **skillcert/frontend/index.html** ← The UI (open in browser)
+- **skillcert/frontend/public/index.html** ← The UI (open in browser)
 
 ---
 

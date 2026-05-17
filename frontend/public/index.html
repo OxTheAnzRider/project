@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkillCert — Anti-Forgery Certification Registry</title>
+    <link rel="stylesheet" href="styles/main.css">
+    <link rel="stylesheet" href="styles/tailwind.css">
+</head>
+<body class="bg-gray-50 text-gray-900">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">SC</div>
+                    <h1 class="text-xl font-bold text-gray-900">SkillCert</h1>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div id="nav-tabs" class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                        <button data-tab="learner" class="nav-tab active px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-200 transition">Learner</button>
+                        <button data-tab="institution" class="nav-tab px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-200 transition">Institution</button>
+                        <button data-tab="verifier" class="nav-tab px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-200 transition">Verify</button>
+                    </div>
+                    <div id="wallet-container"></div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Learner Portal -->
+        <section id="learner-tab" class="tab-content active">
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Learner Portal</h2>
+                    
+                    <!-- Registration or Dashboard -->
+                    <div id="learner-content">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Institution Dashboard -->
+        <section id="institution-tab" class="tab-content hidden">
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Institution Dashboard</h2>
+                    <div id="institution-content">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Verification Interface -->
+        <section id="verifier-tab" class="tab-content hidden">
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6">Verify Certificate</h2>
+                    <div id="verifier-content">
+                        <!-- Will be populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Alert notifications -->
+    <div id="alerts-container" class="fixed top-20 right-4 z-40 space-y-2"></div>
+
+    <!-- Modal for assessment details -->
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-gray-200 p-6">
+                <h3 id="modal-title" class="text-xl font-bold text-gray-900"></h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition text-2xl leading-none">&times;</button>
+            </div>
+            <div id="modal-content" class="p-6"></div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="scripts/api.js"></script>
+    <script src="scripts/wallet.js"></script>
+    <script src="scripts/learner.js"></script>
+    <script src="scripts/institution.js"></script>
+    <script src="scripts/verifier.js"></script>
+    <script src="scripts/ui.js"></script>
+    <script src="scripts/app.js"></script>
+</body>
+</html>
