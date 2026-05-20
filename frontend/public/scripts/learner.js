@@ -9,6 +9,7 @@ class LearnerPortal {
         this.currentQuestionIndex = 0
         this.answers = {}
         this.certificates = []
+        this.courses = []
     }
 
     init() {
@@ -17,6 +18,16 @@ class LearnerPortal {
     }
 
     loadLearner() {
+        const user = auth.user()
+        if (user?.role === 'LEARNER') {
+            return {
+                id: user.learner_id,
+                did: `did:ethr:arbitrum:${user.wallet_address}`,
+                wallet_address: user.wallet_address,
+                programme: 'General',
+                email: user.email,
+            }
+        }
         try {
             return JSON.parse(localStorage.getItem('skillcert-learner') || 'null')
         } catch {
@@ -31,23 +42,29 @@ class LearnerPortal {
 
     renderContent() {
         const container = document.getElementById('learner-content')
+        const user = auth.user()
 
-        if (!wallet.isConnected()) {
+        if (!auth.isAuthenticated()) {
             container.innerHTML = `
                 <div class="text-center py-12">
-                    <p class="text-gray-600 mb-4">Connect your wallet to register and take assessments.</p>
-                    <button class="btn btn-primary" onclick="learnerPortal.connectWallet()">
-                        Connect Wallet
-                    </button>
+                    <p class="text-gray-600 mb-4">Login as a learner to view courses and take assessments.</p>
+                    <a class="btn btn-primary" href="/auth/login.html">Login</a>
                 </div>
             `
             return
         }
 
-        if (!this.learner || this.learner.wallet_address !== wallet.getAccount()) {
-            this.renderRegistration()
+        if (user?.role !== 'LEARNER') {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <p class="text-gray-600 mb-4">This dashboard is for learner accounts.</p>
+                    <button class="btn btn-secondary" onclick="auth.logout()">Use a different account</button>
+                </div>
+            `
             return
         }
+
+        this.learner = this.loadLearner()
 
         if (this.assessment) {
             this.renderAssessment()
@@ -141,28 +158,49 @@ class LearnerPortal {
                 <div class="lg:col-span-2 space-y-6">
                     <div class="card">
                         <div class="card-header">
+                            <h3 class="card-title">Course Enrollment</h3>
+                            <p class="card-subtitle">Enter the verification code provided by your institution.</p>
+                        </div>
+                        <form class="flex flex-col md:flex-row gap-3" onsubmit="learnerPortal.enrollWithCode(event)">
+                            <input class="flex-grow" id="course-code" placeholder="SC-XXXXXXXXXX" required />
+                            <button class="btn btn-primary" type="submit">Enroll</button>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <h3 class="card-title">All Available Courses</h3>
+                                    <p class="card-subtitle">Every active course created by institutions. Enroll with the institution-provided code.</p>
+                                </div>
+                                <button class="btn btn-sm btn-secondary" onclick="learnerPortal.loadAvailableCourses()">Refresh</button>
+                            </div>
+                        </div>
+                        <div id="available-course-list">
+                            <p class="text-sm text-gray-600">Loading courses...</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">My Courses</h3>
+                            <p class="card-subtitle">Select an assessment from an enrolled course.</p>
+                        </div>
+                        <div id="learner-course-list">
+                            <button class="btn btn-secondary" onclick="learnerPortal.loadCourses()">Load Courses</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
                             <h3 class="card-title">Start Assessment</h3>
-                            <p class="card-subtitle">Enter the material ID supplied by your institution.</p>
+                            <p class="card-subtitle">Use an assessment template ID from your enrolled courses.</p>
                         </div>
                         <form id="assessment-start-form" onsubmit="learnerPortal.startAssessment(event)">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div class="form-group md:col-span-2">
-                                    <label>Material ID</label>
-                                    <input type="text" id="assessment-material-id" placeholder="mat_..." required />
-                                </div>
-                                <div class="form-group">
-                                    <label>Questions</label>
-                                    <input type="number" id="assessment-question-count" min="1" max="10" value="5" />
-                                </div>
-                            </div>
                             <div class="form-group">
-                                <label>Difficulty</label>
-                                <select id="assessment-difficulty">
-                                    <option value="mixed">Mixed</option>
-                                    <option value="easy">Easy</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="hard">Hard</option>
-                                </select>
+                                <label>Assessment Template ID</label>
+                                <input type="text" id="assessment-template-id" placeholder="tpl_..." required />
                             </div>
                             <button type="submit" id="assessment-start-btn" class="btn btn-primary">
                                 Start Assessment
@@ -195,7 +233,7 @@ class LearnerPortal {
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Certificates</h3>
-                            <p class="card-subtitle">Issued certificates for this learner.</p>
+                        <p class="card-subtitle">Issued certificates for this learner.</p>
                         </div>
                         <div id="learner-certificates">
                             <button class="btn btn-sm btn-secondary" onclick="learnerPortal.loadCertificates()">Load Certificates</button>
@@ -204,14 +242,102 @@ class LearnerPortal {
                 </aside>
             </div>
         `
+        this.loadAvailableCourses()
+        this.loadCourses()
+    }
+
+    async enrollWithCode(event) {
+        event.preventDefault()
+        const code = document.getElementById('course-code').value.trim()
+        try {
+            await api.enrollWithCode(code)
+            showSuccess('Enrollment confirmed.')
+            document.getElementById('course-code').value = ''
+            await this.loadCourses()
+            await this.loadAvailableCourses()
+        } catch (err) {
+            showError(err.message)
+        }
+    }
+
+    async loadAvailableCourses() {
+        const box = document.getElementById('available-course-list')
+        if (!box) return
+
+        box.innerHTML = `<div class="flex items-center gap-2 text-sm text-gray-600">${getLoadingSpinner()} Loading courses...</div>`
+        try {
+            const result = await api.listCourses()
+            const courses = result.courses || []
+            if (!courses.length) {
+                box.innerHTML = '<p class="text-sm text-gray-600">No institution courses are available yet.</p>'
+                return
+            }
+
+            box.innerHTML = `
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <p class="text-sm text-gray-700">${courses.length} active course${courses.length === 1 ? '' : 's'} available</p>
+                    <span class="badge badge-info">Materials hidden</span>
+                </div>
+                ${courses.map(course => `
+                    <div class="border border-gray-200 rounded-lg p-4 mb-3">
+                        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div>
+                                <h4 class="font-semibold text-gray-900">${escapeHtml(course.title)}</h4>
+                                <p class="text-sm text-gray-600">${escapeHtml(course.description || '')}</p>
+                                <p class="text-xs text-gray-500 mt-2">Institution: ${escapeHtml(course.institution || 'Unknown')}</p>
+                                <p class="text-xs text-gray-500">Created: ${escapeHtml(formatDate(course.created_at))}</p>
+                            </div>
+                            <div class="flex flex-col items-start md:items-end gap-2">
+                                <span class="badge badge-success">${escapeHtml(course.status || 'ACTIVE')}</span>
+                                <span class="badge badge-info">Code required</span>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            `
+        } catch (err) {
+            box.innerHTML = `<p class="text-sm text-red-600">Could not load available courses: ${escapeHtml(err.message)}</p>`
+        }
+    }
+
+    async loadCourses() {
+        const box = document.getElementById('learner-course-list')
+        if (!box) return
+        box.innerHTML = `<div class="flex items-center gap-2 text-sm text-gray-600">${getLoadingSpinner()} Loading courses...</div>`
+        try {
+            const result = await api.myCourses()
+            this.courses = result.courses || []
+            if (!this.courses.length) {
+                box.innerHTML = '<p class="text-sm text-gray-600">No enrolled courses yet.</p>'
+                return
+            }
+            box.innerHTML = this.courses.map(course => `
+                <div class="border border-gray-200 rounded-lg p-4 mb-3">
+                    <h4 class="font-semibold text-gray-900">${escapeHtml(course.title)}</h4>
+                    <p class="text-sm text-gray-600 mb-3">${escapeHtml(course.description || '')}</p>
+                    <p class="text-xs text-gray-500 mb-3">Enrolled: ${escapeHtml(course.enrolled_at || 'Saved')}</p>
+                    <div class="space-y-2">
+                        ${(course.assessments || []).map(a => `
+                            <button class="btn btn-sm btn-secondary" onclick="learnerPortal.pickTemplate('${escapeHtml(a.assessment_template_id)}')">
+                                ${escapeHtml(a.title)} (${a.num_questions} questions)
+                            </button>
+                        `).join('') || '<p class="text-sm text-gray-600">No active assessments.</p>'}
+                    </div>
+                </div>
+            `).join('')
+        } catch (err) {
+            box.innerHTML = '<p class="text-sm text-red-600">Could not load courses.</p>'
+        }
+    }
+
+    pickTemplate(templateId) {
+        document.getElementById('assessment-template-id').value = templateId
     }
 
     async startAssessment(event) {
         event.preventDefault()
 
-        const materialId = document.getElementById('assessment-material-id').value.trim()
-        const numQuestions = Number(document.getElementById('assessment-question-count').value || 5)
-        const difficulty = document.getElementById('assessment-difficulty').value
+        const templateId = document.getElementById('assessment-template-id').value.trim()
         const button = document.getElementById('assessment-start-btn')
 
         button.disabled = true
@@ -220,9 +346,7 @@ class LearnerPortal {
         try {
             const result = await api.createAssessment({
                 learner_id: this.learner.did,
-                material_id: materialId,
-                num_questions: numQuestions,
-                difficulty,
+                assessment_template_id: templateId,
             })
 
             this.assessment = {
@@ -290,7 +414,6 @@ class LearnerPortal {
                 <div>
                     <div class="flex flex-wrap gap-2 mb-3">
                         <span class="badge badge-info">${escapeHtml(question.type || 'question')}</span>
-                        <span class="badge badge-warning">${escapeHtml(question.difficulty || 'mixed')}</span>
                         <span class="badge">${Number(question.points || 0)} pts</span>
                     </div>
                     <p class="text-lg font-medium text-gray-900">${escapeHtml(question.question)}</p>
@@ -447,6 +570,7 @@ class LearnerPortal {
                     <div class="mt-6">
                         <p class="text-sm text-gray-500 mb-1">Feedback</p>
                         <p class="text-gray-800">${escapeHtml(result.overall_feedback || 'No feedback returned.')}</p>
+                        <p class="text-sm text-gray-600 mt-4">Backend difficulty used: ${escapeHtml(result.difficulty_used || 'not returned')}</p>
                     </div>
                 </div>
 
@@ -529,8 +653,7 @@ class LearnerPortal {
     logOut() {
         this.learner = null
         this.assessment = null
-        localStorage.removeItem('skillcert-learner')
-        this.renderContent()
+        auth.logout()
     }
 }
 

@@ -102,7 +102,12 @@ function shortenAddress(addr) {
 }
 
 function formatDate(timestamp) {
-    return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+    if (!timestamp) return 'Not available'
+    const date = typeof timestamp === 'number'
+        ? new Date(timestamp * 1000)
+        : new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return 'Not available'
+    return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -148,6 +153,11 @@ function initTabs() {
             })
         })
     })
+}
+
+function switchTab(tabName) {
+    const button = document.querySelector(`.nav-tab[data-tab="${tabName}"]`)
+    if (button) button.click()
 }
 
 // ── Charts (simple bar chart for SHAP) ────────────────────────────────────────

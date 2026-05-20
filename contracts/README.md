@@ -1,73 +1,69 @@
-## Foundry
+# SkillCert Contracts
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Foundry contracts for the SkillCert certificate registry and soulbound NFT.
 
-Foundry consists of:
+## Build
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```bash
+forge build
 ```
 
-### Test
+## Test
 
-```shell
-$ forge test
+```bash
+forge test
 ```
 
-### Format
+## Deploy
 
-```shell
-$ forge fmt
+Set the deployer private key and, optionally, the backend issuer wallet that
+will sign certificate issuance transactions:
+
+```bash
+export DEPLOYER_PRIVATE_KEY=...
+export INITIAL_ISSUER=0xYourBackendIssuerWallet
 ```
 
-### Gas Snapshots
+Deploy:
 
-```shell
-$ forge snapshot
+```bash
+forge script script/Deploy.s.sol:Deploy \
+  --rpc-url $ARBITRUM_RPC_URL \
+  --broadcast
 ```
 
-### Anvil
+The deploy script:
 
-```shell
-$ anvil
+1. Deploys `CertificationNFT`.
+2. Deploys `CertificationRegistry`.
+3. Calls `CertificationNFT.setRegistry(registryAddress)`.
+4. Optionally authorizes `INITIAL_ISSUER`.
+
+## Backend ABI Compatibility
+
+`CertificationRegistry` exposes the interface expected by
+`backend/app/services/blockchain.py`:
+
+```solidity
+issueCertificate(address learner, string institutionDID, string metadataCID, string assessmentCID)
+revokeCertificate(uint256 tokenId, string reason)
+verifyCertificate(uint256 tokenId)
 ```
 
-### Deploy
+`verifyCertificate` returns:
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```solidity
+(bool valid, string metaCID, string assessmentArtefactCID, string institutionDID, uint256 timestamp)
 ```
 
-### Cast
+After redeploying, update backend `.env`:
 
-```shell
-$ cast <subcommand>
+```bash
+REGISTRY_CONTRACT_ADDRESS=0x...
+NFT_CONTRACT_ADDRESS=0x...
+ARBITRUM_RPC_URL=...
+DEPLOYER_PRIVATE_KEY=...
 ```
 
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
-
-### Things i haven't done
-* created a deployment script
-* created a .env file
-* created a remapping file
-* writen tests
-* @audit
+The backend signing key must be authorized in the registry with
+`addAuthorizedIssuer` or through `INITIAL_ISSUER` during deployment.

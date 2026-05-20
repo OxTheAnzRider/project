@@ -51,10 +51,30 @@ wallet.onStateChanged(() => {
     renderWalletButton()
 })
 
+function openAppTab(tabName) {
+    const tabButtons = document.querySelectorAll('.nav-tab')
+    const tabContents = document.querySelectorAll('.tab-content')
+
+    tabButtons.forEach(btn => {
+        const active = btn.dataset.tab === tabName
+        btn.classList.toggle('active', active)
+    })
+
+    tabContents.forEach(content => {
+        const active = content.id === `${tabName}-tab`
+        content.classList.toggle('hidden', !active)
+    })
+}
+
 // ── Initialize everything ───────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 SkillCert initializing...')
+
+    if (!auth.isAuthenticated()) {
+        window.location.href = '/auth/login.html'
+        return
+    }
 
     // Render wallet button
     renderWalletButton()
@@ -63,6 +83,17 @@ document.addEventListener('DOMContentLoaded', () => {
     learnerPortal.init()
     institutionDashboard.init()
     verifier.init()
+
+    // Open the correct dashboard for the authenticated role.
+    const user = auth.user()
+    const hashTab = window.location.hash.replace('#', '')
+    if (hashTab && ['learner', 'institution', 'verifier'].includes(hashTab)) {
+        openAppTab(hashTab)
+    } else if (user?.role === 'INSTITUTION') {
+        openAppTab('institution')
+    } else {
+        openAppTab('learner')
+    }
 
     // Try to auto-connect if previously connected
     const wasConnected = localStorage.getItem('skillcert-wallet-connected')

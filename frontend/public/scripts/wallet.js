@@ -30,7 +30,9 @@ class WalletManager {
 
     async detectProvider() {
         if (!window.ethereum) {
-            throw new Error('MetaMask not found. Please install the MetaMask browser extension.')
+            console.warn('MetaMask not found; using preview wallet.')
+            this.provider = null
+            return null
         }
         this.provider = window.ethereum
         return this.provider
@@ -39,6 +41,15 @@ class WalletManager {
     async connect() {
         try {
             await this.detectProvider()
+
+            if (!this.provider) {
+                this.account = localStorage.getItem('skillcert-preview-wallet')
+                    || `0x${Math.random().toString(16).slice(2).padEnd(40, '0').slice(0, 40)}`
+                this.chainId = ARBITRUM_SEPOLIA_CHAIN_ID
+                localStorage.setItem('skillcert-preview-wallet', this.account)
+                this.notifyListeners()
+                return { account: this.account, chainId: this.chainId }
+            }
 
             // Request accounts
             const accounts = await this.provider.request({
@@ -67,6 +78,11 @@ class WalletManager {
     }
 
     async switchToArbitrum() {
+        if (!this.provider) {
+            this.chainId = ARBITRUM_SEPOLIA_CHAIN_ID
+            return
+        }
+
         try {
             await this.provider.request({
                 method: 'wallet_switchEthereumChain',
@@ -123,7 +139,8 @@ class WalletManager {
     async call(contractAddress, abi, method, args = []) {
         if (!this.provider) throw new Error('Wallet not connected')
 
-        const ethersProvider = new (window.ethers || {}).providers?.Web3Provider(this.provider)
+        const Web3Provider = window.ethers?.providers?.Web3Provider
+        const ethersProvider = Web3Provider ? new Web3Provider(this.provider) : null
         if (!ethersProvider) {
             // Fallback: use eth_call directly
             console.warn('ethers.js not available — using raw eth_call')

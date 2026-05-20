@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api import assessments, certificates
+from app.api import assessments, auth, certificates, courses, institutions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,6 +63,9 @@ app.add_middleware(
 # Routers
 app.include_router(assessments.router, prefix="/api")
 app.include_router(certificates.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(courses.router, prefix="/api")
+app.include_router(institutions.router, prefix="/api")
 
 
 # ── Learner registration (inline for brevity) ────────────────────────────────

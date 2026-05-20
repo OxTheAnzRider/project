@@ -27,6 +27,7 @@ from assessment import (
     LearningMaterial,
     assessment_engine,
 )
+from llm_service import llm_configuration_status
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FastAPI App Setup
@@ -65,7 +66,7 @@ class AssessmentCreationRequest(BaseModel):
     """Create assessment from material"""
     material_id: str
     student_id: str
-    num_questions: int = 5
+    num_questions: int = 30
     difficulty: str = "mixed"
 
 
@@ -87,7 +88,8 @@ async def health_check():
         "status": "healthy",
         "service": "SkillCert AI Assessment",
         "version": "2.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "llm": llm_configuration_status(),
     }
 
 
@@ -150,7 +152,7 @@ async def create_assessment(req: AssessmentCreationRequest):
             institution_id="",
             material_id=req.material_id,
             student_id=req.student_id,
-            num_questions=req.num_questions,
+            num_questions=30,
             difficulty=req.difficulty
         )
         
@@ -163,7 +165,8 @@ async def create_assessment(req: AssessmentCreationRequest):
             "material_title": result["material_title"],
             "num_questions": result["num_questions"],
             "student_id": req.student_id,
-            "questions": result["questions"]
+            "questions": result["questions"],
+            "generation_method": result.get("generation_method", "local_fallback"),
         }
     
     except Exception as e:
@@ -223,10 +226,19 @@ async def grade_assessment_endpoint(assessment_id: str):
             "total_earned": result["total_earned"],
             "total_points": result["total_points"],
             "percentage": result["percentage"],
+            "outcome": result.get("outcome", "PASS" if result["passed"] else "FAIL"),
             "passed": result["passed"],
             "overall_feedback": result["overall_feedback"],
             "detailed_results": result["detailed_results"],
-            "completed_at": result["completed_at"]
+            "completed_at": result["completed_at"],
+            "competency_prediction": result.get("competency_prediction"),
+            "competency_model_used": result.get("competency_model_used", False),
+            "anomaly_detected": result.get("anomaly_detected", False),
+            "anomaly_model_used": result.get("anomaly_model_used", False),
+            "assessment_report": result.get("assessment_report"),
+            "assessment_report_hash": result.get("assessment_report_hash"),
+            "grading_method": result.get("grading_method", "local_only"),
+            "generation_method": result.get("generation_method", "local_fallback"),
         }
     
     except Exception as e:

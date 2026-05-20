@@ -7,15 +7,16 @@ GET  /certificates/learner/{did}       — get all certificates for a learner
 """
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session
 
 from app.api.assessments import get_db
 from app.core.config import get_settings
-from app.models.db import Certificate, Institution, AuditLog, EventTypeEnum
+from app.models.db import Assessment, Certificate, Institution, AuditLog, EventTypeEnum
 from app.services.blockchain import get_blockchain_service
 
 log = logging.getLogger("api.certificates")
@@ -25,6 +26,72 @@ router = APIRouter(prefix="/certificates", tags=["certificates"])
 class RevokeRequest(BaseModel):
     institution_wallet: str
     reason: str
+
+
+class SecureVerifyRequest(BaseModel):
+    token_id: int
+    verification_code: str
+    qr_payload: str | None = None
+
+
+def mask_wallet(address: str | None) -> str | None:
+    if not address:
+        return None
+    return f"0x...{address[-6:]}"
+
+
+@router.get("/registry/stats")
+async def registry_stats(db: Session = Depends(get_db)):
+    issued_filter = Certificate.token_id.isnot(None), Certificate.issued_at.isnot(None)
+    total = db.query(Certificate).filter(*issued_filter).count()
+    institutions = db.query(func.count(distinct(Certificate.institution_id))).filter(*issued_filter).scalar() or 0
+    courses = (
+        db.query(func.count(distinct(Assessment.course_id)))
+        .join(Certificate, Certificate.assessment_id == Assessment.id)
+        .filter(*issued_filter, Assessment.course_id.isnot(None))
+        .scalar()
+        or 0
+    )
+    # SQLite returns naive datetimes, so keep this comparison UTC-naive.
+    since = datetime.utcnow() - timedelta(days=7)
+    last_7 = db.query(Certificate).filter(
+        *issued_filter,
+        Certificate.issued_at >= since,
+    ).count()
+    return {
+        "total_certificates_issued": total,
+        "institutions": institutions,
+        "courses": courses,
+        "last_7_days": last_7,
+    }
+
+
+@router.post("/verify")
+async def verify_with_code(req: SecureVerifyRequest, db: Session = Depends(get_db)):
+    cert = db.query(Certificate).filter_by(
+        token_id=req.token_id,
+        verification_code=req.verification_code.strip().upper(),
+    ).first()
+    db.add(AuditLog(
+        event_type=EventTypeEnum.VERIFICATION_QUERIED,
+        target_id=str(req.token_id),
+        detail=json.dumps({"matched": bool(cert)}),
+    ))
+    db.commit()
+    if not cert or cert.is_revoked:
+        return {"valid": False, "message": "Certificate not found or code incorrect"}
+    assessment = cert.assessment
+    return {
+        "valid": True,
+        "token_id": cert.token_id,
+        "learner_wallet": mask_wallet(cert.learner.wallet_address),
+        "institution_name": cert.institution.name,
+        "course_name": assessment.course.title if assessment and assessment.course else assessment.programme,
+        "date_issued": cert.issued_at.isoformat() if cert.issued_at else None,
+        "score_percentage": cert.score_percentage or assessment.ai_score,
+        "status": "VERIFIED",
+        "pdf_cid": cert.pdf_cid,
+    }
 
 
 # ── Verification (FR-06) — public, no auth ───────────────────────────────────
@@ -116,7 +183,7 @@ async def revoke_certificate(
     # Update local record
     if cert:
         cert.is_revoked        = True
-        cert.revoked_at        = datetime.now(timezone.utc)
+        cert.revoked_at        = datetime.utcnow()
         cert.revocation_reason = req.reason
 
     db.add(AuditLog(

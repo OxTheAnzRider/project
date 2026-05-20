@@ -1,0 +1,9 @@
+.env
+**/.env
+*.db
+__pycache__/
+*.py[cod]
+.venv/
+**/.venv/
+contracts/broadcast/
+contracts/cache/

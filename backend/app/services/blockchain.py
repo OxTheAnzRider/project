@@ -20,6 +20,7 @@ except ImportError:
     from web3.middleware import geth_poa_middleware as ExtraDataToPOAMiddleware
 
 from app.core.config import get_settings
+from app.services.key_manager import get_key_manager
 
 log = logging.getLogger("blockchain")
 
@@ -31,7 +32,7 @@ REGISTRY_ABI = [
             {"name": "learner",              "type": "address"},
             {"name": "institutionDID",       "type": "string"},
             {"name": "metadataCID",          "type": "string"},
-            {"name": "assessmentArtefactCID","type": "string"},
+            {"name": "assessmentCID",         "type": "string"},
         ],
         "name": "issueCertificate",
         "outputs": [{"name": "tokenId", "type": "uint256"}],
@@ -54,7 +55,7 @@ REGISTRY_ABI = [
         "outputs": [
             {"name": "valid",          "type": "bool"},
             {"name": "metaCID",        "type": "string"},
-            {"name": "artefactCID",    "type": "string"},
+            {"name": "assessmentArtefactCID", "type": "string"},
             {"name": "institutionDID_","type": "string"},
             {"name": "timestamp",      "type": "uint256"},
         ],
@@ -63,16 +64,9 @@ REGISTRY_ABI = [
     },
     {
         "inputs": [{"name": "account", "type": "address"}],
-        "name": "isAuthorisedIssuer",
+        "name": "isAuthorizedIssuer",
         "outputs": [{"name": "", "type": "bool"}],
         "stateMutability": "view",
-        "type": "function",
-    },
-    {
-        "inputs": [{"name": "issuer", "type": "address"}],
-        "name": "authoriseIssuer",
-        "outputs": [],
-        "stateMutability": "nonpayable",
         "type": "function",
     },
     {
@@ -86,6 +80,17 @@ REGISTRY_ABI = [
             {"indexed": False, "name": "timestamp",       "type": "uint256"},
         ],
         "name": "CertificateIssued",
+        "type": "event",
+    },
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True,  "name": "tokenId",   "type": "uint256"},
+            {"indexed": True,  "name": "revokedBy", "type": "address"},
+            {"indexed": False, "name": "reason",    "type": "string"},
+            {"indexed": False, "name": "timestamp", "type": "uint256"},
+        ],
+        "name": "CertificateRevoked",
         "type": "event",
     },
 ]
@@ -126,7 +131,7 @@ class BlockchainService:
         }
 
     def is_authorised_issuer(self, address: str) -> bool:
-        return self.registry.functions.isAuthorisedIssuer(
+        return self.registry.functions.isAuthorizedIssuer(
             Web3.to_checksum_address(address)
         ).call()
 
@@ -138,12 +143,19 @@ class BlockchainService:
         institution_did: str,
         metadata_cid: str,
         artefact_cid: str,
-        issuer_private_key: str,
+        issuer_private_key: str | None = None,
+        institution_id: int | None = None,
     ) -> dict:
         """
         Invoke issueCertificate on the registry.
         Returns tx_hash and token_id extracted from the event log.
         """
+        if institution_id is not None:
+            managed = get_key_manager().get_key(institution_id)
+            if managed:
+                _, issuer_private_key = managed
+        if not issuer_private_key:
+            issuer_private_key = get_settings().DEPLOYER_PRIVATE_KEY
         account = self.w3.eth.account.from_key(issuer_private_key)
         nonce   = self.w3.eth.get_transaction_count(account.address)
 

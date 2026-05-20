@@ -1,30 +1,43 @@
 /**
- * js/verifier.js — Public certificate verification interface
- * 
- * No wallet required — anyone can query a certificate on-chain by token ID.
- * FR-06: Public verification endpoint
+ * js/verifier.js - Anonymous public certificate registry and secure verification.
  */
 
 class VerificationInterface {
     init() {
         this.renderContent()
+        this.loadStats()
     }
 
     renderContent() {
         const container = document.getElementById('verifier-content')
         container.innerHTML = `
             <div class="space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="registry-stats">
+                    <div class="card"><p class="text-sm text-gray-500">Total Certificates</p><p class="text-2xl font-bold">...</p></div>
+                    <div class="card"><p class="text-sm text-gray-500">Institutions</p><p class="text-2xl font-bold">...</p></div>
+                    <div class="card"><p class="text-sm text-gray-500">Courses</p><p class="text-2xl font-bold">...</p></div>
+                    <div class="card"><p class="text-sm text-gray-500">Last 7 Days</p><p class="text-2xl font-bold">...</p></div>
+                </div>
+
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">Verify Certificate (FR-06)</h3>
-                        <p class="card-subtitle">Check certificate authenticity on-chain — no login required</p>
+                        <h3 class="card-title">Verify Certificate</h3>
+                        <p class="card-subtitle">Token ID and verification code are both required. Public registry stats never reveal learner details.</p>
                     </div>
-
                     <form id="verify-form" onsubmit="verifier.verifyToken(event)">
-                        <div class="form-group">
-                            <label>Certificate Token ID</label>
-                            <input type="number" id="token-id" placeholder="e.g., 42" required />
-                            <div class="form-hint">Find this on your certificate</div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="form-group">
+                                <label>Certificate Token ID</label>
+                                <input type="number" id="token-id" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Verification Code</label>
+                                <input type="text" id="verification-code" placeholder="SC-2026-ABC123XYZ" required />
+                            </div>
+                            <div class="form-group">
+                                <label>QR Payload</label>
+                                <input type="text" id="qr-payload" placeholder="Optional scanned QR value" />
+                            </div>
                         </div>
                         <button type="submit" class="btn btn-primary w-full">Verify</button>
                     </form>
@@ -35,16 +48,31 @@ class VerificationInterface {
         `
     }
 
+    async loadStats() {
+        try {
+            const stats = await api.registryStats()
+            document.getElementById('registry-stats').innerHTML = `
+                <div class="card"><p class="text-sm text-gray-500">Total Certificates</p><p class="text-2xl font-bold">${stats.total_certificates_issued}</p></div>
+                <div class="card"><p class="text-sm text-gray-500">Institutions</p><p class="text-2xl font-bold">${stats.institutions}</p></div>
+                <div class="card"><p class="text-sm text-gray-500">Courses</p><p class="text-2xl font-bold">${stats.courses}</p></div>
+                <div class="card"><p class="text-sm text-gray-500">Last 7 Days</p><p class="text-2xl font-bold">${stats.last_7_days}</p></div>
+            `
+        } catch (err) {
+            console.warn('Registry stats unavailable:', err.message)
+        }
+    }
+
     async verifyToken(e) {
         e.preventDefault()
-        const tokenId = parseInt(document.getElementById('token-id').value)
-
+        const tokenId = document.getElementById('token-id').value
+        const code = document.getElementById('verification-code').value.trim()
+        const qrPayload = document.getElementById('qr-payload').value.trim() || null
         const btn = e.target.querySelector('button[type="submit"]')
         btn.disabled = true
         btn.textContent = 'Verifying...'
 
         try {
-            const result = await api.verifyCertificate(tokenId)
+            const result = await api.verifyWithCode(tokenId, code, qrPayload)
             this.showResult(result)
         } catch (err) {
             this.showError(err.message)
@@ -57,116 +85,31 @@ class VerificationInterface {
     showResult(result) {
         const container = document.getElementById('result-container')
         container.classList.remove('hidden')
-
-        const status = result.valid 
-            ? '<span class="badge badge-success">✓ VALID</span>'
-            : '<span class="badge badge-danger">✗ INVALID</span>'
-
-        const revocationNotice = result.is_revoked
-            ? `<div class="alert alert-warning">
-                 <strong>Revoked:</strong> ${result.revocation_reason || 'No reason provided'}
-               </div>`
-            : ''
-
-        const programmeInfo = result.programme 
-            ? `<p class="text-sm"><strong>Programme:</strong> ${escapeHtml(result.programme)}</p>`
-            : ''
-
-        const txLink = result.tx_hash 
-            ? `<a href="https://sepolia.arbiscan.io/tx/${result.tx_hash}" target="_blank" class="text-indigo-600 hover:underline text-xs">View on Arbiscan</a>`
-            : ''
-
+        if (!result.valid) {
+            container.innerHTML = `<div class="alert alert-error">Certificate not found or code incorrect.</div>`
+            return
+        }
         container.innerHTML = `
             <div class="card">
                 <div class="card-header">
-                    <h3 class="card-title">Verification Result ${status}</h3>
+                    <h3 class="card-title"><span class="badge badge-success">VERIFIED</span></h3>
                 </div>
-
-                ${revocationNotice}
-
                 <div class="space-y-3">
-                    <div>
-                        <p class="text-xs text-gray-600">Token ID</p>
-                        <p class="font-mono font-semibold">${result.token_id}</p>
-                    </div>
-
-                    ${programmeInfo}
-
-                    ${result.institution_name ? `
-                        <div>
-                            <p class="text-xs text-gray-600">Issued by</p>
-                            <p class="font-semibold">${escapeHtml(result.institution_name)}</p>
-                        </div>
-                    ` : ''}
-
-                    ${result.issued_at ? `
-                        <div>
-                            <p class="text-xs text-gray-600">Issued at</p>
-                            <p class="font-semibold">${new Date(result.issued_at * 1000).toLocaleDateString()}</p>
-                        </div>
-                    ` : ''}
-
-                    ${result.metadata_cid ? `
-                        <div>
-                            <p class="text-xs text-gray-600">Metadata (IPFS)</p>
-                            <a href="${formatIPFSUrl(result.metadata_cid)}" target="_blank" class="text-indigo-600 hover:underline text-xs break-all">
-                                ${shortenAddress(result.metadata_cid)}
-                            </a>
-                        </div>
-                    ` : ''}
-
-                    ${txLink ? `
-                        <div class="text-xs">
-                            ${txLink}
-                        </div>
-                    ` : ''}
-                </div>
-
-                <div class="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-                    <p><strong>On-chain Verification:</strong> This certificate was verified directly from the Arbitrum Sepolia blockchain.</p>
+                    <p><strong>Token ID:</strong> ${result.token_id}</p>
+                    <p><strong>Learner Wallet:</strong> ${escapeHtml(result.learner_wallet)}</p>
+                    <p><strong>Institution:</strong> ${escapeHtml(result.institution_name)}</p>
+                    <p><strong>Course:</strong> ${escapeHtml(result.course_name || '')}</p>
+                    <p><strong>Date Issued:</strong> ${escapeHtml(result.date_issued || '')}</p>
+                    <p><strong>Score:</strong> ${Number(result.score_percentage || 0).toFixed(1)}%</p>
                 </div>
             </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <h3 class="card-title">What This Means</h3>
-                </div>
-
-                ${result.valid ? `
-                    <div class="space-y-2 text-sm">
-                        <p>✓ This certificate is <strong>authentic</strong> and was issued by an accredited institution.</p>
-                        <p>✓ The certificate is <strong>soulbound</strong> — it cannot be transferred and is permanently linked to its recipient.</p>
-                        <p>✓ The issuance was <strong>verified by AI</strong> and confirmed by human assessors.</p>
-                        <p>✓ The assessment evidence is <strong>tamper-proof</strong> and anchored on the blockchain.</p>
-                    </div>
-                ` : `
-                    <div class="space-y-2 text-sm text-red-700">
-                        <p>✗ This certificate is not found on the blockchain or has been revoked.</p>
-                        <p>✗ Do not accept this credential as valid.</p>
-                    </div>
-                `}
-            </div>
-
-            <button class="btn btn-secondary w-full mt-4" onclick="verifier.resetForm()">
-                Verify Another
-            </button>
         `
     }
 
     showError(message) {
         const container = document.getElementById('result-container')
         container.classList.remove('hidden')
-        container.innerHTML = `
-            <div class="alert alert-error">
-                <strong>Verification Failed:</strong> ${escapeHtml(message)}
-            </div>
-        `
-    }
-
-    resetForm() {
-        document.getElementById('token-id').value = ''
-        document.getElementById('result-container').classList.add('hidden')
-        document.getElementById('token-id').focus()
+        container.innerHTML = `<div class="alert alert-error">${escapeHtml(message)}</div>`
     }
 }
 

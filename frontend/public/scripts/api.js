@@ -1,4 +1,5 @@
-const API_BASE = window.API_BASE || 'http://localhost:8000/api'
+const API_HOST = window.location.hostname || 'localhost'
+const API_BASE = window.API_BASE || `http://${API_HOST}:8000/api`
 
 class APIClient {
     async request(method, endpoint, data = null) {
@@ -9,13 +10,15 @@ class APIClient {
                 'Content-Type': 'application/json',
             },
         }
+        const token = localStorage.getItem('skillcert-access-token')
+        if (token) options.headers.Authorization = `Bearer ${token}`
         if (data) options.body = JSON.stringify(data)
 
         try {
             const resp = await fetch(url, options)
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({ message: resp.statusText }))
-                throw new Error(err.message || `HTTP ${resp.status}`)
+                throw new Error(err.message || err.detail || `HTTP ${resp.status}`)
             }
             return await resp.json()
         } catch (err) {
@@ -25,6 +28,58 @@ class APIClient {
     }
 
     // ── Learners ─────────────────────────────────────────────────────────
+    registerAccount(data) {
+        return this.request('POST', '/auth/register', data)
+    }
+
+    login(email, password) {
+        return this.request('POST', '/auth/login', { email, password })
+    }
+
+    logout(refreshToken) {
+        return this.request('POST', '/auth/logout', { refresh_token: refreshToken })
+    }
+
+    listCourses() {
+        return this.request('GET', '/courses')
+    }
+
+    enrollWithCode(code) {
+        return this.request('POST', '/courses/enroll', { code })
+    }
+
+    myCourses() {
+        return this.request('GET', '/courses/mine')
+    }
+
+    createCourse(data) {
+        return this.request('POST', '/institutions/courses', data)
+    }
+
+    institutionCourses() {
+        return this.request('GET', '/institutions/courses')
+    }
+
+    generateCourseCodes(courseId, data) {
+        return this.request('POST', `/institutions/courses/${courseId}/codes`, data)
+    }
+
+    createAssessmentTemplate(courseId, data) {
+        return this.request('POST', `/institutions/courses/${courseId}/templates`, data)
+    }
+
+    registryStats() {
+        return this.request('GET', '/certificates/registry/stats')
+    }
+
+    verifyWithCode(tokenId, verificationCode, qrPayload = null) {
+        return this.request('POST', '/certificates/verify', {
+            token_id: Number(tokenId),
+            verification_code: verificationCode,
+            qr_payload: qrPayload,
+        })
+    }
+
     registerLearner(fullName, email, walletAddress, programme) {
         return this.request('POST', '/learners/register', {
             full_name: fullName,
