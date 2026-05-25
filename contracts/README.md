@@ -45,7 +45,7 @@ The deploy script:
 `backend/app/services/blockchain.py`:
 
 ```solidity
-issueCertificate(address learner, string institutionDID, string metadataCID, string assessmentCID)
+issueCertificate(address learner, string issuerDID, string metadataCID, string assessmentCID)
 revokeCertificate(uint256 tokenId, string reason)
 verifyCertificate(uint256 tokenId)
 ```
@@ -53,7 +53,7 @@ verifyCertificate(uint256 tokenId)
 `verifyCertificate` returns:
 
 ```solidity
-(bool valid, string metaCID, string assessmentArtefactCID, string institutionDID, uint256 timestamp)
+(bool valid, string metaCID, string assessmentArtefactCID, string issuerDID, uint256 timestamp)
 ```
 
 After redeploying, update backend `.env`:

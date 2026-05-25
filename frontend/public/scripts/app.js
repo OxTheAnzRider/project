@@ -68,10 +68,19 @@ function openAppTab(tabName) {
 
 // ── Initialize everything ───────────────────────────────────────────────────
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 SkillCert initializing...')
 
     if (!auth.isAuthenticated()) {
+        window.location.href = '/auth/login.html'
+        return
+    }
+
+    let user
+    try {
+        user = await auth.syncSession()
+    } catch (err) {
+        console.warn('Session sync failed:', err.message)
         window.location.href = '/auth/login.html'
         return
     }
@@ -81,16 +90,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize portals
     learnerPortal.init()
-    institutionDashboard.init()
+    IssuerDashboard.init()
     verifier.init()
 
     // Open the correct dashboard for the authenticated role.
-    const user = auth.user()
     const hashTab = window.location.hash.replace('#', '')
-    if (hashTab && ['learner', 'institution', 'verifier'].includes(hashTab)) {
+    const allowedTabs = user?.role === 'issuer'
+        ? ['issuer', 'verifier']
+        : ['learner', 'verifier']
+    if (hashTab && allowedTabs.includes(hashTab)) {
         openAppTab(hashTab)
-    } else if (user?.role === 'INSTITUTION') {
-        openAppTab('institution')
+    } else if (user?.role === 'issuer') {
+        openAppTab('issuer')
     } else {
         openAppTab('learner')
     }

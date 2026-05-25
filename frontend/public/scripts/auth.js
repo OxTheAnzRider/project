@@ -17,12 +17,28 @@ const auth = {
         return !!localStorage.getItem('skillcert-access-token')
     },
 
-    logout() {
+    async syncSession() {
+        if (!this.isAuthenticated()) return null
+        try {
+            const result = await api.currentUser()
+            localStorage.setItem('skillcert-user', JSON.stringify(result.user))
+            return result.user
+        } catch (err) {
+            this.clearSession()
+            throw err
+        }
+    },
+
+    clearSession() {
         localStorage.removeItem('skillcert-access-token')
         localStorage.removeItem('skillcert-refresh-token')
         localStorage.removeItem('skillcert-user')
         localStorage.removeItem('skillcert-learner')
         localStorage.removeItem('skillcert-preview-wallet')
+    },
+
+    logout() {
+        this.clearSession()
         window.location.href = '/auth/login.html'
     },
 
@@ -87,6 +103,6 @@ function friendlyAuthError(err) {
 }
 
 function redirectAfterAuth(user) {
-    const tab = user?.role === 'INSTITUTION' ? 'institution' : 'learner'
+    const tab = user?.role === 'issuer' ? 'issuer' : 'learner'
     window.location.href = `/#${tab}`
 }

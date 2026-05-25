@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import (
     create_token,
+    current_user,
     get_db,
     hash_password,
     refresh_token_hash,
     verify_password,
 )
-from app.models.db import AuthSession, Institution, Learner, User, UserRoleEnum
+from app.models.db import AuthSession, Issuer, Learner, User, UserRoleEnum
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -61,6 +62,17 @@ def issue_tokens(user: User, db: Session) -> dict:
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
 
+def serialize_user(user: User) -> dict:
+    return {
+        "id": user.id,
+        "email": user.email,
+        "wallet_address": user.wallet_address,
+        "role": user.role.value,
+        "learner_id": user.learner_id,
+        "issuer_id": user.issuer_id,
+    }
+
+
 @router.post("/register")
 async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(
@@ -70,7 +82,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(409, "Account already exists")
 
     learner = None
-    institution = None
+    issuer= None
     if req.role == UserRoleEnum.LEARNER:
         did = f"did:ethr:arbitrum:{req.wallet_address}"
         learner = Learner(
@@ -82,13 +94,13 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
         )
         db.add(learner)
         db.flush()
-    elif req.role == UserRoleEnum.INSTITUTION:
-        institution = Institution(
+    elif req.role == UserRoleEnum.issuer:
+        issuer= Issuer(
             did=f"did:ethr:arbitrum:{req.wallet_address}",
             name=req.full_name,
             wallet_address=req.wallet_address,
         )
-        db.add(institution)
+        db.add(issuer)
         db.flush()
 
     user = User(
@@ -97,7 +109,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
         wallet_address=req.wallet_address,
         role=req.role,
         learner_id=learner.id if learner else None,
-        institution_id=institution.id if institution else None,
+        issuer_id=issuer.id if issuer else None,
     )
     db.add(user)
     db.commit()
@@ -105,14 +117,7 @@ async def register(req: RegisterRequest, db: Session = Depends(get_db)):
     tokens = issue_tokens(user, db)
     return {
         **tokens,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "wallet_address": user.wallet_address,
-            "role": user.role.value,
-            "learner_id": user.learner_id,
-            "institution_id": user.institution_id,
-        },
+        "user": serialize_user(user),
     }
 
 
@@ -124,15 +129,13 @@ async def login(req: LoginRequest, db: Session = Depends(get_db)):
     tokens = issue_tokens(user, db)
     return {
         **tokens,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "wallet_address": user.wallet_address,
-            "role": user.role.value,
-            "learner_id": user.learner_id,
-            "institution_id": user.institution_id,
-        },
+        "user": serialize_user(user),
     }
+
+
+@router.get("/me")
+async def me(user: User = Depends(current_user)):
+    return {"user": serialize_user(user)}
 
 
 @router.post("/refresh")

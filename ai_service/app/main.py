@@ -2,14 +2,14 @@
 ai_service/app/main.py — FastAPI routes for AI Assessment Service
 
 Integrated Assessment Pipeline:
-  1. Institution uploads learning material
+  1. issueruploads learning material
   2. AI generates contextual exam questions
   3. Student takes exam (answers questions)
   4. AI grades answers against material
   5. Results feed to backend for blockchain cert
 
 Endpoints:
-  POST /ingest-material        — Institution uploads learning material
+  POST /ingest-material        — issueruploads learning material
   POST /create-assessment      — Generate exam questions from material
   POST /submit-answer          — Student submits answer
   POST /grade-assessment       — Grade all answers and provide feedback
@@ -53,8 +53,8 @@ app.add_middleware(
 # ═══════════════════════════════════════════════════════════════════════════
 
 class MaterialIngestionRequest(BaseModel):
-    """Institution uploads learning material"""
-    institution_id: str
+    """issueruploads learning material"""
+    issuer_id: str
     programme: str
     title: str
     content: str
@@ -96,16 +96,16 @@ async def health_check():
 @app.post("/ingest-material")
 async def ingest_material(req: MaterialIngestionRequest):
     """
-    Institution uploads learning material
+    issueruploads learning material
     
-    Used by: Backend API → Institution Dashboard
+    Used by: Backend API → issuerDashboard
     Flow: Material → Stored → Ready for assessment
     """
     
     try:
         material = LearningMaterial(
             material_id=f"mat_{int(datetime.now().timestamp())}",
-            institution_id=req.institution_id,
+            issuer_id=req.issuer_id,
             programme=req.programme,
             title=req.title,
             content=req.content,
@@ -125,7 +125,7 @@ async def ingest_material(req: MaterialIngestionRequest):
         return {
             "status": "success",
             "material_id": material_id,
-            "institution_id": req.institution_id,
+            "issuer_id": req.issuer_id,
             "programme": req.programme,
             "title": req.title,
             "content_length": len(req.content),
@@ -149,7 +149,7 @@ async def create_assessment(req: AssessmentCreationRequest):
     
     try:
         result = assessment_engine.create_assessment(
-            institution_id="",
+            issuer_id="",
             material_id=req.material_id,
             student_id=req.student_id,
             num_questions=30,

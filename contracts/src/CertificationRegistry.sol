@@ -13,24 +13,23 @@ contract CertificationRegistry is AccessControl {
     struct CertificateRecord {
         string metadataCID;
         string artefactCID;
-        string institutionDID;
+        string issuerDID;
         uint256 issuedAt;
     }
 
     mapping(address => bool) public authorizedIssuers;
-    mapping(address => bool) public authorizedInstitutions;
     mapping(uint256 => bool) public isRevoked;
     mapping(uint256 => string) public revocationReason;
     mapping(uint256 => string) public artefactCID;
     mapping(uint256 => CertificateRecord) public certificateRecords;
 
-    event IssuerAuthorized(address indexed institution);
-    event IssuerDeauthorized(address indexed institution);
+    event IssuerAuthorized(address indexed issuer);
+    event IssuerDeauthorized(address indexed issuer);
 
     event CertificateIssued(
         uint256 indexed tokenId,
         address indexed learner,
-        string institutionDID,
+        string issuerDID,
         string metadataCID,
         string assessmentArtefactCID,
         uint256 timestamp
@@ -50,15 +49,14 @@ contract CertificationRegistry is AccessControl {
         nftContract = CertificationNFT(_nftContract);
     }
 
-    function setAuthorizedIssuers(address[] calldata institutions)
+    function setAuthorizedIssuers(address[] calldata issuers)
         external
         onlyRole(ADMIN_ROLE)
     {
-        for (uint256 i = 0; i < institutions.length; i++) {
-            authorizedIssuers[institutions[i]] = true;
-            authorizedInstitutions[institutions[i]] = true;
-            _grantRole(ISSUER_ROLE, institutions[i]);
-            emit IssuerAuthorized(institutions[i]);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            authorizedIssuers[issuers[i]] = true;
+            _grantRole(ISSUER_ROLE, issuers[i]);
+            emit IssuerAuthorized(issuers[i]);
         }
     }
 
@@ -66,50 +64,48 @@ contract CertificationRegistry is AccessControl {
         return authorizedIssuers[account];
     }
 
-    function addAuthorizedIssuer(address institution)
+    function addAuthorizedIssuer(address issuer)
         external
         onlyRole(ADMIN_ROLE)
     {
-        require(!authorizedIssuers[institution], "Already authorized");
-        authorizedIssuers[institution] = true;
-        authorizedInstitutions[institution] = true;
-        _grantRole(ISSUER_ROLE, institution);
-        emit IssuerAuthorized(institution);
+        require(!authorizedIssuers[issuer], "Already authorized");
+        authorizedIssuers[issuer] = true;
+        _grantRole(ISSUER_ROLE, issuer);
+        emit IssuerAuthorized(issuer);
     }
 
-    function removeAuthorizedIssuer(address institution)
+    function removeAuthorizedIssuer(address issuer)
         external
         onlyRole(ADMIN_ROLE)
     {
-        require(authorizedIssuers[institution], "Not authorized");
-        authorizedIssuers[institution] = false;
-        authorizedInstitutions[institution] = false;
-        _revokeRole(ISSUER_ROLE, institution);
-        emit IssuerDeauthorized(institution);
+        require(authorizedIssuers[issuer], "Not authorized");
+        authorizedIssuers[issuer] = false;
+        _revokeRole(ISSUER_ROLE, issuer);
+        emit IssuerDeauthorized(issuer);
     }
 
     /// Issue an NFT certificate after confirmed AI assessment pass
     function issueCertificate(
         address learner,
-        string calldata institutionDID,
+        string calldata issuerDID,
         string calldata metadataCID,
         string calldata assessmentCID
     ) external returns (uint256 tokenId) {
-        require(authorizedIssuers[msg.sender], "Institution not authorized");
+        require(authorizedIssuers[msg.sender], "Issuer not authorized");
         tokenId = nftContract.mint(learner, metadataCID);
 
         artefactCID[tokenId] = assessmentCID;
         certificateRecords[tokenId] = CertificateRecord({
             metadataCID: metadataCID,
             artefactCID: assessmentCID,
-            institutionDID: institutionDID,
+            issuerDID: issuerDID,
             issuedAt: block.timestamp
         });
 
         emit CertificateIssued(
             tokenId,
             learner,
-            institutionDID,
+            issuerDID,
             metadataCID,
             assessmentCID,
             block.timestamp
@@ -120,7 +116,7 @@ contract CertificationRegistry is AccessControl {
     function revokeCertificate(uint256 tokenId, string calldata reason)
         external
     {
-        require(authorizedIssuers[msg.sender], "Institution not authorized");
+        require(authorizedIssuers[msg.sender], "Issuer not authorized");
         require(!isRevoked[tokenId], "Already revoked");
         require(nftContract.exists(tokenId), "Certificate does not exist");
 
@@ -138,7 +134,7 @@ contract CertificationRegistry is AccessControl {
             bool valid,
             string memory metaCID,
             string memory assessmentArtefactCID,
-            string memory institutionDID,
+            string memory issuerDID,
             uint256 timestamp
         )
     {
@@ -146,7 +142,7 @@ contract CertificationRegistry is AccessControl {
         CertificateRecord memory record = certificateRecords[tokenId];
         metaCID = record.metadataCID;
         assessmentArtefactCID = record.artefactCID;
-        institutionDID = record.institutionDID;
+        issuerDID = record.issuerDID;
         timestamp = record.issuedAt;
     }
 }

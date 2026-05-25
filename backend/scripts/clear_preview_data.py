@@ -1,10 +1,31 @@
 import json
 import sqlite3
+import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 
-BACKEND_DB = Path("/home/anzicle/project/backend/dev2.db")
-AI_DB = Path("/home/anzicle/project/ai_service/ai_service.db")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+AI_DB = PROJECT_ROOT / "ai_service" / "ai_service.db"
+
+
+def configured_backend_db() -> Path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+    from app.core.config import get_settings
+
+    database_url = get_settings().DATABASE_URL
+    if database_url.startswith("sqlite:///"):
+        raw_path = unquote(database_url.replace("sqlite:///", "", 1))
+        db_path = Path(raw_path)
+        if not db_path.is_absolute():
+            db_path = BACKEND_ROOT / db_path
+        return db_path
+
+    raise RuntimeError(
+        "clear_preview_data.py only clears SQLite databases. "
+        f"Configured DATABASE_URL is {database_url!r}."
+    )
 
 BACKEND_TABLES = [
     "auth_sessions",
@@ -15,8 +36,10 @@ BACKEND_TABLES = [
     "course_codes",
     "courses",
     "materials",
+    "issuer_keys",
     "institution_keys",
     "learners",
+    "issuers",
     "institutions",
     "users",
     "audit_log",
@@ -70,8 +93,9 @@ def clear_tables(db_path: Path, tables: list[str]) -> dict:
 
 
 def main():
+    backend_db = configured_backend_db()
     result = {
-        "backend": clear_tables(BACKEND_DB, BACKEND_TABLES),
+        "backend": clear_tables(backend_db, BACKEND_TABLES),
         "ai_service": clear_tables(AI_DB, AI_TABLES),
     }
     print(json.dumps(result, indent=2, sort_keys=True))

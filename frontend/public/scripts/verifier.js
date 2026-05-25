@@ -14,7 +14,7 @@ class VerificationInterface {
             <div class="space-y-6">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4" id="registry-stats">
                     <div class="card"><p class="text-sm text-gray-500">Total Certificates</p><p class="text-2xl font-bold">...</p></div>
-                    <div class="card"><p class="text-sm text-gray-500">Institutions</p><p class="text-2xl font-bold">...</p></div>
+                    <div class="card"><p class="text-sm text-gray-500">Issuers</p><p class="text-2xl font-bold">...</p></div>
                     <div class="card"><p class="text-sm text-gray-500">Courses</p><p class="text-2xl font-bold">...</p></div>
                     <div class="card"><p class="text-sm text-gray-500">Last 7 Days</p><p class="text-2xl font-bold">...</p></div>
                 </div>
@@ -53,7 +53,7 @@ class VerificationInterface {
             const stats = await api.registryStats()
             document.getElementById('registry-stats').innerHTML = `
                 <div class="card"><p class="text-sm text-gray-500">Total Certificates</p><p class="text-2xl font-bold">${stats.total_certificates_issued}</p></div>
-                <div class="card"><p class="text-sm text-gray-500">Institutions</p><p class="text-2xl font-bold">${stats.institutions}</p></div>
+                <div class="card"><p class="text-sm text-gray-500">Issuers</p><p class="text-2xl font-bold">${stats.issuers}</p></div>
                 <div class="card"><p class="text-sm text-gray-500">Courses</p><p class="text-2xl font-bold">${stats.courses}</p></div>
                 <div class="card"><p class="text-sm text-gray-500">Last 7 Days</p><p class="text-2xl font-bold">${stats.last_7_days}</p></div>
             `
@@ -97,7 +97,7 @@ class VerificationInterface {
                 <div class="space-y-3">
                     <p><strong>Token ID:</strong> ${result.token_id}</p>
                     <p><strong>Learner Wallet:</strong> ${escapeHtml(result.learner_wallet)}</p>
-                    <p><strong>Institution:</strong> ${escapeHtml(result.institution_name)}</p>
+                    <p><strong>Issuer:</strong> ${escapeHtml(result.issuer_name)}</p>
                     <p><strong>Course:</strong> ${escapeHtml(result.course_name || '')}</p>
                     <p><strong>Date Issued:</strong> ${escapeHtml(result.date_issued || '')}</p>
                     <p><strong>Score:</strong> ${Number(result.score_percentage || 0).toFixed(1)}%</p>

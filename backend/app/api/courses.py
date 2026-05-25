@@ -37,7 +37,7 @@ async def list_courses(db: Session = Depends(get_db)):
                 "course_id": c.course_id,
                 "title": c.title,
                 "description": c.description,
-                "institution": c.institution.name if c.institution else None,
+                "issuer": c.issuer.name if c.issuer else None,
                 "status": c.status.value,
                 "created_at": c.created_at.isoformat() if c.created_at else None,
             }

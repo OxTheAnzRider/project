@@ -159,7 +159,7 @@ class LearnerPortal {
                     <div class="card">
                         <div class="card-header">
                             <h3 class="card-title">Course Enrollment</h3>
-                            <p class="card-subtitle">Enter the verification code provided by your institution.</p>
+                            <p class="card-subtitle">Enter the verification code provided by your issuer.</p>
                         </div>
                         <form class="flex flex-col md:flex-row gap-3" onsubmit="learnerPortal.enrollWithCode(event)">
                             <input class="flex-grow" id="course-code" placeholder="SC-XXXXXXXXXX" required />
@@ -172,7 +172,7 @@ class LearnerPortal {
                             <div class="flex items-center justify-between gap-3">
                                 <div>
                                     <h3 class="card-title">All Available Courses</h3>
-                                    <p class="card-subtitle">Every active course created by institutions. Enroll with the institution-provided code.</p>
+                                    <p class="card-subtitle">Every active course created by issuers. Enroll with the issuer-provided code.</p>
                                 </div>
                                 <button class="btn btn-sm btn-secondary" onclick="learnerPortal.loadAvailableCourses()">Refresh</button>
                             </div>
@@ -250,6 +250,15 @@ class LearnerPortal {
         event.preventDefault()
         const code = document.getElementById('course-code').value.trim()
         try {
+            const session = await api.currentUser()
+            if (session.user?.role !== 'LEARNER' || !session.user?.learner_id) {
+                auth.clearSession()
+                showError('You are signed in with an issuer account. Please login with a learner account to enroll.')
+                setTimeout(() => {
+                    window.location.href = '/auth/login.html'
+                }, 1200)
+                return
+            }
             await api.enrollWithCode(code)
             showSuccess('Enrollment confirmed.')
             document.getElementById('course-code').value = ''
@@ -269,7 +278,7 @@ class LearnerPortal {
             const result = await api.listCourses()
             const courses = result.courses || []
             if (!courses.length) {
-                box.innerHTML = '<p class="text-sm text-gray-600">No institution courses are available yet.</p>'
+                box.innerHTML = '<p class="text-sm text-gray-600">No issuercourses are available yet.</p>'
                 return
             }
 
@@ -284,7 +293,7 @@ class LearnerPortal {
                             <div>
                                 <h4 class="font-semibold text-gray-900">${escapeHtml(course.title)}</h4>
                                 <p class="text-sm text-gray-600">${escapeHtml(course.description || '')}</p>
-                                <p class="text-xs text-gray-500 mt-2">Institution: ${escapeHtml(course.institution || 'Unknown')}</p>
+                                <p class="text-xs text-gray-500 mt-2">Issuer: ${escapeHtml(course.issuer|| 'Unknown')}</p>
                                 <p class="text-xs text-gray-500">Created: ${escapeHtml(formatDate(course.created_at))}</p>
                             </div>
                             <div class="flex flex-col items-start md:items-end gap-2">
@@ -592,15 +601,31 @@ class LearnerPortal {
 
         return `
             <div class="space-y-3">
-                ${results.map((item, index) => `
-                    <div class="border border-gray-200 rounded-lg p-4">
-                        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-2 mb-2">
-                            <p class="font-medium text-gray-900">Q${index + 1}: ${escapeHtml(item.question || item.question_id || '')}</p>
-                            <span class="badge badge-info">${Number(item.points_earned ?? item.score ?? 0)} / ${Number(item.max_points ?? item.points ?? 0)}</span>
+                ${results.map((item, index) => {
+                    const breakdown = item.score_breakdown || {}
+                    const finalScore = Number(breakdown.final_score ?? item.score_percent ?? 0)
+                    const llmScore = breakdown.llm_score === null || breakdown.llm_score === undefined
+                        ? 'N/A'
+                        : `${Number(breakdown.llm_score).toFixed(1)}%`
+                    const localScore = breakdown.local_score === null || breakdown.local_score === undefined
+                        ? 'N/A'
+                        : `${Number(breakdown.local_score).toFixed(1)}%`
+                    return `
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-2 mb-2">
+                                <p class="font-medium text-gray-900">Q${index + 1}: ${escapeHtml(item.question || item.question_id || '')}</p>
+                                <span class="badge badge-info">${Number(item.points_earned ?? item.score ?? 0)} / ${Number(item.max_points ?? item.points ?? 0)}</span>
+                            </div>
+                            <p class="text-sm text-gray-700">${escapeHtml(item.feedback || 'No feedback.')}</p>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-gray-600">
+                                <span>Final: ${finalScore.toFixed(1)}%</span>
+                                <span>Semantic: ${llmScore}</span>
+                                <span>Local: ${localScore}</span>
+                            </div>
+                            ${breakdown.consistency_note ? `<p class="mt-2 text-xs text-gray-500">${escapeHtml(breakdown.consistency_note)}</p>` : ''}
                         </div>
-                        <p class="text-sm text-gray-700">${escapeHtml(item.feedback || 'No feedback.')}</p>
-                    </div>
-                `).join('')}
+                    `
+                }).join('')}
             </div>
         `
     }

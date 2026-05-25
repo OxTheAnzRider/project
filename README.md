@@ -1,24 +1,24 @@
 # SkillCert: Anti-Forgery Proof Certification Registry
 
-SkillCert is a full-stack certification system for skill acquisition programmes. It combines learner authentication, institution-managed courses, AI-assisted assessments, NFT certificate issuance, IPFS certificate evidence, and public certificate verification.
+SkillCert is a full-stack certification system for skill acquisition programmes. It combines learner authentication, issuer-managed courses, AI-assisted assessments, NFT certificate issuance, IPFS certificate evidence, and public certificate verification.
 
 The project is split into four major parts:
 
-- `frontend/` - static browser UI for learners, institutions, authentication, and certificate verification.
+- `frontend/` - static browser UI for learners, issuers, authentication, and certificate verification.
 - `backend/` - FastAPI API, database models, auth, course/enrollment logic, assessment orchestration, certificate issuance, PDF generation, IPFS, and blockchain calls.
 - `ai_service/` - FastAPI microservice for material ingestion, question generation, answer grading, hybrid OpenAI/local assessment logic, and assessment report hashes.
 - `contracts/` - Solidity smart contracts for certificate NFT minting and registry verification.
 
 ## High-Level Workflow
 
-1. Institution registers or logs in.
-2. Institution creates a course.
-3. Institution uploads or enters course material.
-4. Institution creates one or more assessment templates for that course.
-5. Institution generates enrollment codes for learners.
+1. issuerregisters or logs in.
+2. issuercreates a course.
+3. issueruploads or enters course material.
+4. issuercreates one or more assessment templates for that course.
+5. issuergenerates enrollment codes for learners.
 6. Learner registers or logs in.
 7. Learner views available courses.
-8. Learner enrolls using an institution-provided course code.
+8. Learner enrolls using an issuer-provided course code.
 9. Learner selects an available assessment for the enrolled course.
 10. Backend requests the AI service to generate exactly 30 questions.
 11. Learner answers the assessment.
@@ -36,9 +36,9 @@ The frontend is plain HTML/CSS/JavaScript served from `frontend/public`.
 
 Main UI areas:
 
-- Auth pages: learner/institution registration and login.
+- Auth pages: learner/issuerregistration and login.
 - Learner dashboard: course discovery, code-based enrollment, assessment selection, answering questions, viewing result/certificate details.
-- Institution dashboard: create courses, generate enrollment codes, manage materials/templates, view enrolled learners and results.
+- issuerdashboard: create courses, generate enrollment codes, manage materials/templates, view enrolled learners and results.
 - Verification dashboard: public certificate statistics and token/code verification.
 
 The frontend talks to the backend at:
@@ -104,7 +104,7 @@ Main contracts:
 - `CertificationNFT.sol` - NFT certificate token.
 - `CertificationRegistry.sol` - certificate issuance, issuer authorization, revocation, and verification registry.
 
-The deployed backend config points to Arbitrum Sepolia. The backend signs issuance transactions using the configured private key or an institution key if active institution key management is used.
+The deployed backend config points to Arbitrum Sepolia. The backend signs issuance transactions using the configured private key or an issuerkey if active issuerkey management is used.
 
 ## Independent Operation
 
@@ -361,7 +361,7 @@ The public registry hides learner-sensitive data by default and only reveals lim
 
 ## Course Enrollment Methodology
 
-Institutions create courses and generate enrollment codes.
+Issuers create courses and generate enrollment codes.
 
 Learners can view course title and description, but cannot access assessments unless enrolled.
 
@@ -423,7 +423,7 @@ Updated frontend routing/tab logic so pages initialize correctly.
 
 Problem:
 
-Institution login sometimes redirected to learner dashboard.
+issuerlogin sometimes redirected to learner dashboard.
 
 Fix:
 
@@ -467,7 +467,7 @@ Verification dashboard counted active course codes as courses/certificates.
 
 Fix:
 
-Updated registry stats to count issued certificates/courses/institutions correctly.
+Updated registry stats to count issued certificates/courses/issuers correctly.
 
 ### 9. Weak Local AI Questions
 
@@ -802,7 +802,7 @@ Remaining caveat:
 2. Start backend.
 3. Start frontend.
 4. Open `http://localhost:5173`.
-5. Register institution account.
+5. Register issueraccount.
 6. Create course.
 7. Add material.
 8. Create assessment template.

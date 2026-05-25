@@ -18,14 +18,14 @@ from app.models.db import (
     CourseCode,
     CourseEnrollment,
     CourseStatusEnum,
-    Institution,
+    Issuer,
     Material,
     User,
 )
 from app.services.ipfs import pin_file
 from app.services.key_manager import get_key_manager
 
-router = APIRouter(prefix="/institutions", tags=["institutions"])
+router = APIRouter(prefix="/issuers", tags=["issuers"])
 
 
 class CourseCreateRequest(BaseModel):
@@ -47,20 +47,20 @@ class TemplateCreateRequest(BaseModel):
     material_id: str
 
 
-class InstitutionKeyRequest(BaseModel):
+class IssuerKeyRequest(BaseModel):
     address: str
     private_key: str
 
 
-def require_institution(user: User, db: Session) -> Institution:
-    institution = None
-    if user.institution_id:
-        institution = db.query(Institution).filter_by(id=user.institution_id).first()
-    if not institution:
-        institution = db.query(Institution).filter_by(wallet_address=user.wallet_address).first()
-    if not institution:
-        raise HTTPException(403, "Institution account required")
-    return institution
+def require_issuer(user: User, db: Session) -> Issuer:
+    issuer= None
+    if user.issuer_id:
+        issuer= db.query(Issuer).filter_by(id=user.issuer_id).first()
+    if not issuer:
+        issuer= db.query(Issuer).filter_by(wallet_address=user.wallet_address).first()
+    if not issuer:
+        raise HTTPException(403, "Issuer account required")
+    return issuer
 
 
 def code_value() -> str:
@@ -78,10 +78,10 @@ async def create_course(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
+    issuer= require_issuer(user, db)
     course = Course(
         course_id=f"course_{int(datetime.now(timezone.utc).timestamp())}_{secrets.token_hex(3)}",
-        institution_id=institution.id,
+        issuer_id=issuer.id,
         title=req.title,
         description=req.description,
         status=req.status,
@@ -97,12 +97,12 @@ async def create_course(
 
 
 @router.get("/courses")
-async def institution_courses(
+async def issuer_courses(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    courses = db.query(Course).filter_by(institution_id=institution.id).all()
+    issuer= require_issuer(user, db)
+    courses = db.query(Course).filter_by(issuer_id=issuer.id).all()
     return {
         "courses": [
             {
@@ -156,8 +156,8 @@ async def generate_codes(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    course = db.query(Course).filter_by(course_id=course_id, institution_id=institution.id).first()
+    issuer= require_issuer(user, db)
+    course = db.query(Course).filter_by(course_id=course_id, issuer_id=issuer.id).first()
     if not course:
         raise HTTPException(404, "Course not found")
 
@@ -190,18 +190,18 @@ async def create_template(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    course = db.query(Course).filter_by(course_id=course_id, institution_id=institution.id).first()
+    issuer= require_issuer(user, db)
+    course = db.query(Course).filter_by(course_id=course_id, issuer_id=issuer.id).first()
     if not course:
         raise HTTPException(404, "Course not found")
-    material = db.query(Material).filter_by(material_id=req.material_id, institution_id=institution.id).first()
+    material = db.query(Material).filter_by(material_id=req.material_id, issuer_id=issuer.id).first()
     if not material:
         raise HTTPException(404, "Material not found")
 
     template = AssessmentTemplate(
         assessment_template_id=f"tpl_{int(datetime.now(timezone.utc).timestamp())}_{secrets.token_hex(3)}",
         course_id=course.id,
-        institution_id=institution.id,
+        issuer_id=issuer.id,
         title=req.title,
         description=req.description,
         material_db_id=material.id,
@@ -227,7 +227,7 @@ async def upload_material_file(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
+    issuer= require_issuer(user, db)
     if file.size and file.size > 50 * 1024 * 1024:
         raise HTTPException(400, "File exceeds 50MB limit")
 
@@ -245,8 +245,8 @@ async def upload_material_file(
     cid = await pin_file(raw, file.filename or "material")
     material = Material(
         material_id=f"mat_{int(datetime.now(timezone.utc).timestamp())}_{secrets.token_hex(3)}",
-        institution_id=institution.id,
-        institution_did=institution.did,
+        issuer_id=issuer.id,
+        issuer_did=issuer.did,
         programme=programme,
         title=title,
         content=text,
@@ -264,6 +264,28 @@ async def upload_material_file(
     }
 
 
+@router.get("/materials")
+async def issuer_materials(
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    issuer = require_issuer(user, db)
+    materials = db.query(Material).filter_by(issuer_id=issuer.id).order_by(Material.created_at.desc()).all()
+    return {
+        "materials": [
+            {
+                "material_id": material.material_id,
+                "title": material.title,
+                "programme": material.programme,
+                "topics": material.topics,
+                "key_concepts": material.key_concepts,
+                "created_at": serialize_dt(material.created_at),
+            }
+            for material in materials
+        ]
+    }
+
+
 @router.get("/learners")
 async def enrolled_learners(
     course_id: str | None = None,
@@ -271,8 +293,8 @@ async def enrolled_learners(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    query = db.query(CourseEnrollment).join(Course).filter(Course.institution_id == institution.id)
+    issuer= require_issuer(user, db)
+    query = db.query(CourseEnrollment).join(Course).filter(Course.issuer_id == issuer.id)
     if course_id:
         query = query.filter(Course.course_id == course_id)
     enrollments = query.all()
@@ -343,21 +365,21 @@ async def export_enrolled_learners(
 
 
 @router.post("/keys")
-async def add_institution_key(
-    req: InstitutionKeyRequest,
+async def add_issuer_key(
+    req: IssuerKeyRequest,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    get_key_manager().add_key(institution.id, req.address, req.private_key)
+    issuer= require_issuer(user, db)
+    get_key_manager().add_key(issuer.id, req.address, req.private_key)
     return {"status": "success", "address": req.address}
 
 
 @router.post("/keys/revoke")
-async def revoke_institution_key(
+async def revoke_issuer_key(
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
 ):
-    institution = require_institution(user, db)
-    get_key_manager().revoke_key(institution.id)
+    issuer= require_issuer(user, db)
+    get_key_manager().revoke_key(issuer.id)
     return {"status": "success"}

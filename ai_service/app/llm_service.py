@@ -235,7 +235,9 @@ def grade_answers_with_llm(
     system = (
         "You grade learner answers using the supplied expected answers and rubrics. "
         "Return valid JSON only. Be fair to equivalent wording, but do not reward "
-        "answers that miss the required concept."
+        "answers that miss the required concept. Keep the feedback tone aligned "
+        "with the numeric score: use excellent/strong language only for high scores, "
+        "and clearly name missing rubric points for low or partial scores."
     )
     user = json.dumps({
         "task": "Grade all answers.",

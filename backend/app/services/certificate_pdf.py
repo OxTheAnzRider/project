@@ -17,7 +17,7 @@ def _pdf_escape(text: str) -> str:
 def build_certificate_pdf_bytes(
     *,
     learner_wallet: str,
-    institution_name: str,
+    issuer_name: str,
     course_name: str,
     score_percentage: float,
     assessment_title: str,
@@ -37,7 +37,7 @@ def build_certificate_pdf_bytes(
         f"This certifies wallet {learner_wallet}",
         "has successfully completed",
         f"Course: {course_name}",
-        f"Institution: {institution_name}",
+        f"Issuer: {issuer_name}",
         f"Assessment: {assessment_title}",
         f"Score: {score_percentage:.1f}%",
         f"Date: {datetime.now(timezone.utc).date().isoformat()}",

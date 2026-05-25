@@ -2,7 +2,7 @@
 app/api/certificates.py — Certificate verification and revocation
 
 GET  /certificates/{token_id}/verify   — public on-chain verification (FR-06)
-POST /certificates/{token_id}/revoke   — institution revocation (FR-07)
+POST /certificates/{token_id}/revoke   — issuerrevocation (FR-07)
 GET  /certificates/learner/{did}       — get all certificates for a learner
 """
 import json
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.api.assessments import get_db
 from app.core.config import get_settings
-from app.models.db import Assessment, Certificate, Institution, AuditLog, EventTypeEnum
+from app.models.db import Assessment, Certificate, Issuer, AuditLog, EventTypeEnum
 from app.services.blockchain import get_blockchain_service
 
 log = logging.getLogger("api.certificates")
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/certificates", tags=["certificates"])
 
 
 class RevokeRequest(BaseModel):
-    institution_wallet: str
+    issuer_wallet: str
     reason: str
 
 
@@ -44,7 +44,7 @@ def mask_wallet(address: str | None) -> str | None:
 async def registry_stats(db: Session = Depends(get_db)):
     issued_filter = Certificate.token_id.isnot(None), Certificate.issued_at.isnot(None)
     total = db.query(Certificate).filter(*issued_filter).count()
-    institutions = db.query(func.count(distinct(Certificate.institution_id))).filter(*issued_filter).scalar() or 0
+    issuers = db.query(func.count(distinct(Certificate.issuer_id))).filter(*issued_filter).scalar() or 0
     courses = (
         db.query(func.count(distinct(Assessment.course_id)))
         .join(Certificate, Certificate.assessment_id == Assessment.id)
@@ -60,7 +60,7 @@ async def registry_stats(db: Session = Depends(get_db)):
     ).count()
     return {
         "total_certificates_issued": total,
-        "institutions": institutions,
+        "issuers": issuers,
         "courses": courses,
         "last_7_days": last_7,
     }
@@ -85,7 +85,7 @@ async def verify_with_code(req: SecureVerifyRequest, db: Session = Depends(get_d
         "valid": True,
         "token_id": cert.token_id,
         "learner_wallet": mask_wallet(cert.learner.wallet_address),
-        "institution_name": cert.institution.name,
+        "issuer_name": cert.issuer.name,
         "course_name": assessment.course.title if assessment and assessment.course else assessment.programme,
         "date_issued": cert.issued_at.isoformat() if cert.issued_at else None,
         "score_percentage": cert.score_percentage or assessment.ai_score,
@@ -128,11 +128,11 @@ async def verify_certificate(token_id: int, db: Session = Depends(get_db)):
         "valid":           on_chain["valid"],
         "metadata_cid":    on_chain["meta_cid"],
         "artefact_cid":    on_chain["artefact_cid"],
-        "institution_did": on_chain["institution_did"],
+        "issuer_did": on_chain["issuer_did"],
         "issued_at":       on_chain["timestamp"],
         # Off-chain enrichment (null if not in local DB)
         "programme":       cert.assessment.learner.programme if cert else None,
-        "institution_name": cert.institution.name if cert else None,
+        "issuer_name": cert.issuer.name if cert else None,
         "tx_hash":         cert.tx_hash if cert else None,
         "is_revoked":      cert.is_revoked if cert else not on_chain["valid"],
         "revocation_reason": cert.revocation_reason if cert else None,
@@ -148,21 +148,21 @@ async def revoke_certificate(
     db: Session = Depends(get_db),
 ):
     """
-    FR-07: Institution revokes a certificate.
+    FR-07: issuerrevokes a certificate.
     Token stays on-chain with isRevoked=true for audit trail.
     """
     settings = get_settings()
 
-    # Verify institution exists and is authorised
-    institution = db.query(Institution).filter_by(
-        wallet_address=req.institution_wallet
+    # Verify issuerexists and is authorised
+    issuer= db.query(Issuer).filter_by(
+        wallet_address=req.issuer_wallet
     ).first()
-    if not institution:
-        raise HTTPException(404, "Institution not registered")
+    if not issuer:
+        raise HTTPException(404, "Issuer not registered")
 
     chain = get_blockchain_service()
-    if not chain.is_authorised_issuer(req.institution_wallet):
-        raise HTTPException(403, "Institution not authorised on-chain")
+    if not chain.is_authorised_issuer(req.issuer_wallet):
+        raise HTTPException(403, "Issuer not authorised on-chain")
 
     # Check local record
     cert = db.query(Certificate).filter_by(token_id=token_id).first()
@@ -188,7 +188,7 @@ async def revoke_certificate(
 
     db.add(AuditLog(
         event_type = EventTypeEnum.CERTIFICATE_REVOKED,
-        actor_did  = institution.did,
+        actor_did  = issuer.did,
         target_id  = str(token_id),
         tx_hash    = result.get("tx_hash"),
         detail     = json.dumps({"reason": req.reason})
@@ -220,7 +220,7 @@ async def get_learner_certificates(learner_did: str, db: Session = Depends(get_d
             {
                 "token_id":    c.token_id,
                 "programme":   c.assessment.learner.programme,
-                "institution": c.institution.name,
+                "issuer": c.issuer.name,
                 "issued_at":   c.issued_at.isoformat() if c.issued_at else None,
                 "is_revoked":  c.is_revoked,
                 "tx_hash":     c.tx_hash,

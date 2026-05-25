@@ -14,7 +14,7 @@ contract CertificationRegistryTest is Test {
     address private learner = address(0xB0B);
     address private stranger = address(0xBAD);
 
-    string private institutionDID = "did:ethr:arbitrum:0xA11CE";
+    string private issuerDID = "did:ethr:arbitrum:0xA11CE";
     string private metadataCID = "bafy-metadata";
     string private artefactCID = "bafy-assessment";
 
@@ -28,7 +28,7 @@ contract CertificationRegistryTest is Test {
         registry.addAuthorizedIssuer(issuer);
 
         assertTrue(registry.isAuthorizedIssuer(issuer));
-        assertTrue(registry.authorizedInstitutions(issuer));
+        assertTrue(registry.authorizedIssuers(issuer));
         assertTrue(registry.hasRole(registry.ISSUER_ROLE(), issuer));
     }
 
@@ -38,7 +38,7 @@ contract CertificationRegistryTest is Test {
         vm.prank(issuer);
         uint256 tokenId = registry.issueCertificate(
             learner,
-            institutionDID,
+            issuerDID,
             metadataCID,
             artefactCID
         );
@@ -52,21 +52,21 @@ contract CertificationRegistryTest is Test {
             bool valid,
             string memory returnedMetadataCID,
             string memory returnedArtefactCID,
-            string memory returnedInstitutionDID,
+            string memory returnedIssuerDID,
             uint256 timestamp
         ) = registry.verifyCertificate(tokenId);
 
         assertTrue(valid);
         assertEq(returnedMetadataCID, metadataCID);
         assertEq(returnedArtefactCID, artefactCID);
-        assertEq(returnedInstitutionDID, institutionDID);
+        assertEq(returnedIssuerDID, issuerDID);
         assertGt(timestamp, 0);
     }
 
     function testUnauthorizedIssuerCannotIssue() public {
         vm.prank(stranger);
-        vm.expectRevert("Institution not authorized");
-        registry.issueCertificate(learner, institutionDID, metadataCID, artefactCID);
+        vm.expectRevert("Issuer not authorized");
+        registry.issueCertificate(learner, issuerDID, metadataCID, artefactCID);
     }
 
     function testAuthorizedIssuerCanRevokeWithReason() public {
@@ -75,7 +75,7 @@ contract CertificationRegistryTest is Test {
         vm.startPrank(issuer);
         uint256 tokenId = registry.issueCertificate(
             learner,
-            institutionDID,
+            issuerDID,
             metadataCID,
             artefactCID
         );
@@ -96,7 +96,7 @@ contract CertificationRegistryTest is Test {
         vm.prank(issuer);
         uint256 tokenId = registry.issueCertificate(
             learner,
-            institutionDID,
+            issuerDID,
             metadataCID,
             artefactCID
         );

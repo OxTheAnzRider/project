@@ -30,7 +30,7 @@ REGISTRY_ABI = [
     {
         "inputs": [
             {"name": "learner",              "type": "address"},
-            {"name": "institutionDID",       "type": "string"},
+            {"name": "issuerDID",       "type": "string"},
             {"name": "metadataCID",          "type": "string"},
             {"name": "assessmentCID",         "type": "string"},
         ],
@@ -56,7 +56,7 @@ REGISTRY_ABI = [
             {"name": "valid",          "type": "bool"},
             {"name": "metaCID",        "type": "string"},
             {"name": "assessmentArtefactCID", "type": "string"},
-            {"name": "institutionDID_","type": "string"},
+            {"name": "issuerDID_","type": "string"},
             {"name": "timestamp",      "type": "uint256"},
         ],
         "stateMutability": "view",
@@ -74,7 +74,7 @@ REGISTRY_ABI = [
         "inputs": [
             {"indexed": True,  "name": "tokenId",        "type": "uint256"},
             {"indexed": True,  "name": "learner",         "type": "address"},
-            {"indexed": False, "name": "institutionDID",  "type": "string"},
+            {"indexed": False, "name": "issuerDID",  "type": "string"},
             {"indexed": False, "name": "metadataCID",     "type": "string"},
             {"indexed": False, "name": "assessmentArtefactCID", "type": "string"},
             {"indexed": False, "name": "timestamp",       "type": "uint256"},
@@ -118,15 +118,15 @@ class BlockchainService:
     def verify_certificate(self, token_id: int) -> dict:
         """
         Gas-free on-chain verification.
-        Returns validity, metadata CID, artefact CID, institution DID, timestamp.
+        Returns validity, metadata CID, artefact CID, issuerDID, timestamp.
         """
         result = self.registry.functions.verifyCertificate(token_id).call()
-        valid, meta_cid, artefact_cid, institution_did, timestamp = result
+        valid, meta_cid, artefact_cid, issuer_did, timestamp = result
         return {
             "valid":           valid,
             "meta_cid":        meta_cid,
             "artefact_cid":    artefact_cid,
-            "institution_did": institution_did,
+            "issuer_did": issuer_did,
             "timestamp":       timestamp,
         }
 
@@ -140,18 +140,18 @@ class BlockchainService:
     def issue_certificate(
         self,
         learner_address: str,
-        institution_did: str,
+        issuer_did: str,
         metadata_cid: str,
         artefact_cid: str,
         issuer_private_key: str | None = None,
-        institution_id: int | None = None,
+        issuer_id: int | None = None,
     ) -> dict:
         """
         Invoke issueCertificate on the registry.
         Returns tx_hash and token_id extracted from the event log.
         """
-        if institution_id is not None:
-            managed = get_key_manager().get_key(institution_id)
+        if issuer_id is not None:
+            managed = get_key_manager().get_key(issuer_id)
             if managed:
                 _, issuer_private_key = managed
         if not issuer_private_key:
@@ -161,7 +161,7 @@ class BlockchainService:
 
         tx = self.registry.functions.issueCertificate(
             Web3.to_checksum_address(learner_address),
-            institution_did,
+            issuer_did,
             metadata_cid,
             artefact_cid,
         ).build_transaction({

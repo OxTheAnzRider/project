@@ -36,6 +36,10 @@ class APIClient {
         return this.request('POST', '/auth/login', { email, password })
     }
 
+    currentUser() {
+        return this.request('GET', '/auth/me')
+    }
+
     logout(refreshToken) {
         return this.request('POST', '/auth/logout', { refresh_token: refreshToken })
     }
@@ -53,19 +57,19 @@ class APIClient {
     }
 
     createCourse(data) {
-        return this.request('POST', '/institutions/courses', data)
+        return this.request('POST', '/issuers/courses', data)
     }
 
-    institutionCourses() {
-        return this.request('GET', '/institutions/courses')
+    issuerCourses() {
+        return this.request('GET', '/issuers/courses')
     }
 
     generateCourseCodes(courseId, data) {
-        return this.request('POST', `/institutions/courses/${courseId}/codes`, data)
+        return this.request('POST', `/issuers/courses/${courseId}/codes`, data)
     }
 
     createAssessmentTemplate(courseId, data) {
-        return this.request('POST', `/institutions/courses/${courseId}/templates`, data)
+        return this.request('POST', `/issuers/courses/${courseId}/templates`, data)
     }
 
     registryStats() {
@@ -134,9 +138,9 @@ class APIClient {
         return this.request('GET', `/certificates/${tokenId}/verify`)
     }
 
-    revokeCertificate(tokenId, institutionWallet, reason) {
+    revokeCertificate(tokenId, issuerWallet, reason) {
         return this.request('POST', `/certificates/${tokenId}/revoke`, {
-            institution_wallet: institutionWallet,
+            issuer_wallet: issuerWallet,
             reason,
         })
     }
@@ -145,16 +149,24 @@ class APIClient {
         return this.request('GET', `/certificates/learner/${encodeURIComponent(did)}`)
     }
 
-    // ── Institutions ─────────────────────────────────────────────────────
-    registerInstitution(name, walletAddress) {
-        return this.request('POST', '/institutions/register', {
+    // ── Issuers ─────────────────────────────────────────────────────
+    registerIssuer(name, walletAddress) {
+        return this.request('POST', '/issuers/register', {
             name,
             wallet_address: walletAddress,
         })
     }
 
     getPendingReviews(walletAddress) {
-        return this.request('GET', `/institutions/${walletAddress}/pending-reviews`)
+        return this.request('GET', `/issuers/${walletAddress}/pending-reviews`)
+    }
+
+    issuerLearners() {
+        return this.request('GET', '/issuers/learners')
+    }
+
+    issuerMaterials() {
+        return this.request('GET', '/issuers/materials')
     }
 
     // ── Health ───────────────────────────────────────────────────────────

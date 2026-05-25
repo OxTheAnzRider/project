@@ -47,7 +47,7 @@ class EventTypeEnum(str, enum.Enum):
 
 class UserRoleEnum(str, enum.Enum):
     LEARNER = "LEARNER"
-    INSTITUTION = "INSTITUTION"
+    issuer= "issuer"
     ADMIN = "ADMIN"
 
 
@@ -73,7 +73,7 @@ class User(Base):
     wallet_address = Column(String(42), unique=True, nullable=False)
     role          = Column(Enum(UserRoleEnum), default=UserRoleEnum.LEARNER, nullable=False)
     learner_id    = Column(Integer, ForeignKey("learners.id"), nullable=True)
-    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=True)
+    issuer_id = Column(Integer, ForeignKey("issuers.id"), nullable=True)
     is_active     = Column(Boolean, default=True)
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -106,9 +106,9 @@ class Learner(Base):
     certificates = relationship("Certificate", back_populates="learner")
 
 
-# ── Institution ──────────────────────────────────────────────────────────────
-class Institution(Base):
-    __tablename__ = "institutions"
+# ── issuer──────────────────────────────────────────────────────────────
+class Issuer(Base):
+    __tablename__ = "issuers"
 
     id                    = Column(Integer, primary_key=True, index=True)
     did                   = Column(String(255), unique=True, index=True, nullable=False)
@@ -117,10 +117,10 @@ class Institution(Base):
     accreditation_status  = Column(Boolean, default=True)
     created_at            = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    assessments  = relationship("Assessment", back_populates="institution", foreign_keys="Assessment.institution_id")
-    certificates = relationship("Certificate", back_populates="institution")
-    materials    = relationship("Material", back_populates="institution")
-    courses      = relationship("Course", back_populates="institution")
+    assessments  = relationship("Assessment", back_populates="issuer", foreign_keys="Assessment.issuer_id")
+    certificates = relationship("Certificate", back_populates="issuer")
+    materials    = relationship("Material", back_populates="issuer")
+    courses      = relationship("Course", back_populates="issuer")
 
 
 # ── Learning Material ────────────────────────────────────────────────────────
@@ -129,8 +129,8 @@ class Material(Base):
 
     id               = Column(Integer, primary_key=True, index=True)
     material_id      = Column(String(255), unique=True, index=True, nullable=False)
-    institution_id   = Column(Integer, ForeignKey("institutions.id"), nullable=False)
-    institution_did  = Column(String(255), nullable=False)
+    issuer_id   = Column(Integer, ForeignKey("issuers.id"), nullable=False)
+    issuer_did  = Column(String(255), nullable=False)
     programme        = Column(String(100), nullable=False)
     title            = Column(String(255), nullable=False)
     content          = Column(Text, nullable=False)
@@ -139,7 +139,7 @@ class Material(Base):
     key_concepts     = Column(Text, nullable=True)
     created_at       = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    institution = relationship("Institution", back_populates="materials")
+    issuer= relationship("Issuer", back_populates="materials")
     assessments = relationship("Assessment", back_populates="material")
     templates   = relationship("AssessmentTemplate", back_populates="material")
 
@@ -150,13 +150,13 @@ class Course(Base):
 
     id             = Column(Integer, primary_key=True, index=True)
     course_id      = Column(String(255), unique=True, index=True, nullable=False)
-    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=False)
+    issuer_id = Column(Integer, ForeignKey("issuers.id"), nullable=False)
     title          = Column(String(255), nullable=False)
     description    = Column(Text, nullable=False)
     status         = Column(Enum(CourseStatusEnum), default=CourseStatusEnum.ACTIVE, nullable=False)
     created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    institution = relationship("Institution", back_populates="courses")
+    issuer= relationship("Issuer", back_populates="courses")
     codes       = relationship("CourseCode", back_populates="course")
     enrollments = relationship("CourseEnrollment", back_populates="course")
     templates   = relationship("AssessmentTemplate", back_populates="course")
@@ -200,7 +200,7 @@ class AssessmentTemplate(Base):
     id             = Column(Integer, primary_key=True, index=True)
     assessment_template_id = Column(String(255), unique=True, index=True, nullable=False)
     course_id      = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=False)
+    issuer_id = Column(Integer, ForeignKey("issuers.id"), nullable=False)
     title          = Column(String(255), nullable=False)
     description    = Column(Text, nullable=True)
     material_db_id = Column(Integer, ForeignKey("materials.id"), nullable=False)
@@ -220,7 +220,7 @@ class Assessment(Base):
     id              = Column(Integer, primary_key=True, index=True)
     assessment_id   = Column(String(255), unique=True, index=True, nullable=True)
     learner_id      = Column(Integer, ForeignKey("learners.id"), nullable=False)
-    institution_id  = Column(Integer, ForeignKey("institutions.id"), nullable=False)
+    issuer_id  = Column(Integer, ForeignKey("issuers.id"), nullable=False)
     course_id       = Column(Integer, ForeignKey("courses.id"), nullable=True)
     assessment_template_id = Column(Integer, ForeignKey("assessment_templates.id"), nullable=True)
     material_db_id  = Column(Integer, ForeignKey("materials.id"), nullable=True)
@@ -263,7 +263,7 @@ class Assessment(Base):
 
     # Final outcome
     outcome             = Column(Enum(OutcomeEnum), default=OutcomeEnum.PENDING)
-    adjudicated_by_id   = Column(Integer, ForeignKey("institutions.id"), nullable=True)
+    adjudicated_by_id   = Column(Integer, ForeignKey("issuers.id"), nullable=True)
     adjudicated_at      = Column(DateTime, nullable=True)
 
     # Storage
@@ -272,7 +272,7 @@ class Assessment(Base):
     completed_at        = Column(DateTime, nullable=True)
 
     learner     = relationship("Learner", back_populates="assessments")
-    institution = relationship("Institution", back_populates="assessments", foreign_keys=[institution_id])
+    issuer= relationship("Issuer", back_populates="assessments", foreign_keys=[issuer_id])
     material    = relationship("Material", back_populates="assessments")
     course      = relationship("Course")
     template    = relationship("AssessmentTemplate")
@@ -286,7 +286,7 @@ class Certificate(Base):
     id             = Column(Integer, primary_key=True, index=True)
     token_id       = Column(Integer, unique=True, nullable=True)   # on-chain tokenId
     learner_id     = Column(Integer, ForeignKey("learners.id"), nullable=False)
-    institution_id = Column(Integer, ForeignKey("institutions.id"), nullable=False)
+    issuer_id = Column(Integer, ForeignKey("issuers.id"), nullable=False)
     assessment_id  = Column(Integer, ForeignKey("assessments.id"), nullable=False)
 
     metadata_cid   = Column(String(255), nullable=True)   # IPFS CID of VC JSON
@@ -303,7 +303,7 @@ class Certificate(Base):
     is_revoked     = Column(Boolean, default=False)
 
     learner     = relationship("Learner", back_populates="certificates")
-    institution = relationship("Institution", back_populates="certificates")
+    issuer= relationship("Issuer", back_populates="certificates")
     assessment  = relationship("Assessment", back_populates="certificate")
 
 
@@ -320,14 +320,14 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
-class InstitutionKey(Base):
-    __tablename__ = "institution_keys"
+class IssuerKey(Base):
+    __tablename__ = "issuer_keys"
 
     id                    = Column(Integer, primary_key=True, index=True)
-    institution_id         = Column(Integer, ForeignKey("institutions.id"), nullable=False)
-    institution_address    = Column(String(42), nullable=False)
+    issuer_id         = Column(Integer, ForeignKey("issuers.id"), nullable=False)
+    issuer_address    = Column(String(42), nullable=False)
     private_key_encrypted  = Column(Text, nullable=False)
     created_at             = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     revoked_at             = Column(DateTime, nullable=True)
 
-    institution = relationship("Institution")
+    issuer= relationship("Issuer")

@@ -2,7 +2,7 @@
 backend/app/api/assessments.py — Q-by-Q assessment and issuance workflow.
 
 Flow:
-1. Institution uploads material:       POST /api/assessments/materials/ingest
+1. issueruploads material:       POST /api/assessments/materials/ingest
 2. Learner starts assessment:         POST /api/assessments/create
 3. Learner submits each answer:       POST /api/assessments/{id}/answers/submit
 4. Learner submits for grading:       POST /api/assessments/{id}/grade
@@ -28,7 +28,7 @@ from app.models.db import (
     Certificate,
     CourseEnrollment,
     EventTypeEnum,
-    Institution,
+    Issuer,
     Learner,
     Material,
     OutcomeEnum,
@@ -54,7 +54,7 @@ settings = get_settings()
 
 
 class MaterialIngestionRequest(BaseModel):
-    institution_id: str
+    issuer_id: str
     programme: str
     title: str
     content: str
@@ -102,19 +102,19 @@ async def call_ai_service(endpoint: str, payload: dict) -> dict:
     return resp.json()
 
 
-def resolve_institution(db: Session, identifier: str) -> Institution:
-    institution = (
-        db.query(Institution)
+def resolve_issuer(db: Session, identifier: str) -> Issuer:
+    issuer= (
+        db.query(Issuer)
         .filter(
-            (Institution.did == identifier)
-            | (Institution.wallet_address == identifier)
-            | (Institution.name == identifier)
+            (Issuer.did == identifier)
+            | (Issuer.wallet_address == identifier)
+            | (Issuer.name == identifier)
         )
         .first()
     )
-    if not institution:
-        raise HTTPException(404, "Institution not registered")
-    return institution
+    if not issuer:
+        raise HTTPException(404, "Issuer not registered")
+    return issuer
 
 
 def resolve_learner(db: Session, identifier: str) -> Learner:
@@ -130,11 +130,11 @@ def resolve_learner(db: Session, identifier: str) -> Learner:
 
 @router.post("/materials/ingest")
 async def ingest_material(req: MaterialIngestionRequest, db: Session = Depends(get_db)):
-    institution = resolve_institution(db, req.institution_id)
+    issuer= resolve_issuer(db, req.issuer_id)
 
     try:
         ai_result = await call_ai_service("/ingest-material", {
-            "institution_id": institution.did,
+            "issuer_id": issuer.did,
             "programme": req.programme,
             "title": req.title,
             "content": req.content,
@@ -145,8 +145,8 @@ async def ingest_material(req: MaterialIngestionRequest, db: Session = Depends(g
         material_id = ai_result["material_id"]
         material = Material(
             material_id=material_id,
-            institution_id=institution.id,
-            institution_did=institution.did,
+            issuer_id=issuer.id,
+            issuer_did=issuer.did,
             programme=req.programme,
             title=req.title,
             content=req.content,
@@ -158,7 +158,7 @@ async def ingest_material(req: MaterialIngestionRequest, db: Session = Depends(g
         db.add(material)
         db.add(AuditLog(
             event_type=EventTypeEnum.MATERIAL_INGESTED,
-            actor_did=institution.did,
+            actor_did=issuer.did,
             target_id=material_id,
             detail=json.dumps({"title": req.title, "programme": req.programme}),
             created_at=datetime.now(timezone.utc),
@@ -168,7 +168,7 @@ async def ingest_material(req: MaterialIngestionRequest, db: Session = Depends(g
         return {
             "status": "success",
             "material_id": material_id,
-            "institution_id": institution.did,
+            "issuer_id": issuer.did,
             "programme": req.programme,
             "title": req.title,
             "key_concepts": ai_result.get("key_concepts", []),
@@ -228,7 +228,7 @@ async def create_assessment(req: AssessmentCreationRequest, db: Session = Depend
         assessment = Assessment(
             assessment_id=assessment_id,
             learner_id=learner.id,
-            institution_id=material.institution_id,
+            issuer_id=material.issuer_id,
             course_id=template.course_id if template else None,
             assessment_template_id=template.id if template else None,
             material_db_id=material.id,
@@ -387,11 +387,11 @@ async def grade_assessment(
         if passed:
             try:
                 learner = assessment.learner
-                institution = assessment.institution
+                issuer= assessment.issuer
                 metadata = {
                     "assessment_id": assessment_id,
                     "learner_did": learner.did,
-                    "institution_did": institution.did,
+                    "issuer_did": issuer.did,
                     "programme": assessment.programme,
                     "material_id": assessment.material_id,
                     "score": percentage,
@@ -403,11 +403,11 @@ async def grade_assessment(
                 metadata_cid = await pin_json(metadata)
                 cert_result = get_blockchain_service().issue_certificate(
                     learner_address=learner.wallet_address,
-                    institution_did=institution.did,
+                    issuer_did=issuer.did,
                     metadata_cid=metadata_cid,
                     artefact_cid=assessment_id,
                     issuer_private_key=settings.DEPLOYER_PRIVATE_KEY,
-                    institution_id=institution.id,
+                    issuer_id=issuer.id,
                 )
 
                 certificate_token_id = cert_result.get("token_id")
@@ -419,7 +419,7 @@ async def grade_assessment(
                 )
                 pdf_bytes = build_certificate_pdf_bytes(
                     learner_wallet=learner.wallet_address,
-                    institution_name=institution.name,
+                    issuer_name=issuer.name,
                     course_name=assessment.course.title if assessment.course else assessment.programme,
                     assessment_title=assessment.template.title if assessment.template else "Assessment",
                     score_percentage=percentage,
@@ -432,7 +432,7 @@ async def grade_assessment(
                     token_id=certificate_token_id,
                     assessment_id=assessment.id,
                     learner_id=learner.id,
-                    institution_id=institution.id,
+                    issuer_id=issuer.id,
                     metadata_cid=metadata_cid,
                     artefact_cid=assessment_id,
                     tx_hash=certificate_tx_hash,
@@ -443,7 +443,7 @@ async def grade_assessment(
                 ))
                 db.add(AuditLog(
                     event_type=EventTypeEnum.CERTIFICATE_ISSUED,
-                    actor_did=institution.did,
+                    actor_did=issuer.did,
                     target_id=assessment_id,
                     tx_hash=certificate_tx_hash,
                     detail=json.dumps({"token_id": certificate_token_id, "learner_did": learner.did}),

@@ -6,7 +6,7 @@ Mounts:
   /api/assessments  — assessment submission and adjudication
   /api/certificates — verification and revocation
   /api/learners     — registration
-  /api/institutions — registration and admin
+  /api/issuers — registration and admin
   /api/audit        — audit log queries
   /health           — liveness
 """
@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.api import assessments, auth, certificates, courses, institutions
+from app.api import assessments, auth, certificates, courses, issuers
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,7 +65,7 @@ app.include_router(assessments.router, prefix="/api")
 app.include_router(certificates.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(courses.router, prefix="/api")
-app.include_router(institutions.router, prefix="/api")
+app.include_router(issuers.router, prefix="/api")
 
 
 # ── Learner registration (inline for brevity) ────────────────────────────────
@@ -119,45 +119,45 @@ async def register_learner(req: RegisterLearnerRequest, db = Depends(get_db)):
 app.include_router(learner_router)
 
 
-# ── Institution registration (inline) ────────────────────────────────────────
-inst_router = APIRouter(prefix="/api/institutions", tags=["institutions"])
+# ── Issuer registration (inline) ────────────────────────────────────────
+inst_router = APIRouter(prefix="/api/issuers", tags=["issuers"])
 
-class RegisterInstitutionRequest(BaseModel):
+class RegisterIssuerRequest(BaseModel):
     name:           str
     wallet_address: str
 
 @inst_router.post("/register")
-async def register_institution(req: RegisterInstitutionRequest, db = Depends(get_db)):
-    """FR-02: Register an institution and generate its DID."""
-    from app.models.db import Institution
+async def register_issuer(req: RegisterIssuerRequest, db = Depends(get_db)):
+    """FR-02: Register an issuer and generate its DID."""
+    from app.models.db import Issuer
 
     did = f"did:ethr:arbitrum:{req.wallet_address}"
-    institution = db.query(Institution).filter_by(wallet_address=req.wallet_address).first()
-    if institution:
-        institution.name = req.name
-        institution.did = did
+    issuer= db.query(Issuer).filter_by(wallet_address=req.wallet_address).first()
+    if issuer:
+        issuer.name = req.name
+        issuer.did = did
     else:
-        institution = Institution(
+        issuer= Issuer(
             did=did,
             name=req.name,
             wallet_address=req.wallet_address,
         )
-        db.add(institution)
+        db.add(issuer)
     db.commit()
-    db.refresh(institution)
+    db.refresh(issuer)
 
     return {
-        "id":            institution.id,
+        "id":            issuer.id,
         "did":           did,
         "name":          req.name,
         "wallet_address": req.wallet_address,
-        "message":       "Institution registered. Grant ISSUER_ROLE via the admin contract call.",
+        "message":       "Issuer registered. Grant ISSUER_ROLE via the admin contract call.",
     }
 
 @inst_router.get("/{wallet}/pending-reviews")
 async def pending_reviews(wallet: str):
-    """Get assessments awaiting human adjudication for this institution."""
-    return {"institution_wallet": wallet, "pending": []}
+    """Get assessments awaiting human adjudication for this issuer."""
+    return {"issuer_wallet": wallet, "pending": []}
 
 app.include_router(inst_router)
 
