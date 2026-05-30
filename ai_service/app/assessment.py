@@ -12,14 +12,19 @@ Integrated with SkillCert system:
 
 import json
 import hashlib
+import logging
 from typing import List, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass
 
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+
+from llm_service import generate_questions_with_llm, grade_answers_with_llm
+
+log = logging.getLogger("ai.assessment")
 
 # 1. MATERIAL INGESTION & STORAGE
 
@@ -59,27 +64,170 @@ class MaterialStore:
         return self.materials.get(material_id)
 
     def extract_key_concepts(self, content: str, num_concepts: int = 5) -> List[str]:
-        """Extract key concepts from material using TF-IDF"""
-        # Simple concept extraction: sentences with high TF-IDF scores
-        sentences = content.split('.')
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        """Extract readable key concepts from material using TF-IDF phrases."""
+        return extract_readable_concepts(content, num_concepts=num_concepts)
 
-        if len(sentences) < num_concepts:
-            return sentences
+# Shared helpers for readable local-fallback question generation.
+_CUSTOM_STOP_WORDS = {
+    "able", "also", "another", "because", "being", "course", "example", "however",
+    "include", "includes", "including", "learn", "learning", "lesson", "module",
+    "messages", "overview", "related", "section", "skills", "student", "students",
+    "thing", "things", "start", "sure", "topic", "topics", "using", "where",
+    "will", "work", "you", "your", "youre",
+}
 
-        vectorizer = TfidfVectorizer(max_features=50, stop_words='english')
-        try:
-            vectorizer.fit_transform(sentences)
-            feature_names = np.array(vectorizer.get_feature_names_out())
+_BAD_CONCEPT_STARTS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from", "how",
+    "if", "in", "is", "it", "its", "not", "of", "on", "or", "so", "that", "the",
+    "these", "this", "those", "to", "what", "when", "where", "which", "while",
+    "who", "why", "with", "without", "you", "your", "youre",
+}
 
-            # Get top sentences by TF-IDF
-            tfidf_matrix = vectorizer.transform(sentences)
-            importance = tfidf_matrix.mean(axis=1).A1
-            top_indices = np.argsort(importance)[-num_concepts:]
+_BAD_CONCEPT_VERBS = {
+    "affect", "affects", "align", "aligns", "allow", "allows", "apply", "applies",
+    "build", "builds", "compare", "compares", "create", "creates", "define",
+    "defines", "describe", "describes", "develop", "develops", "enable", "enables",
+    "explain", "explains", "focus", "focuses", "help", "helps", "improve",
+    "improves", "include", "includes", "learn", "measure", "measures", "need",
+    "provide", "provides", "relate", "relates", "require", "requires",
+    "show", "shows", "support", "supports", "understand", "understands", "use",
+    "uses",
+}
 
-            return [sentences[i] for i in sorted(top_indices)]
-        except:
-            return sentences[:num_concepts]
+
+def _split_sentences(content: str) -> List[str]:
+    return [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", content)
+        if len(sentence.strip()) >= 20
+    ]
+
+
+def _clean_concept(text: str) -> str:
+    text = re.sub(r"[\u2018\u2019]", "'", text)
+    text = re.sub(r"[^A-Za-z0-9' -]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" -'")
+    text = re.sub(r"^(if|when|while|because|since|and|but|or|so)\s+", "", text, flags=re.I)
+    words = text.split()
+
+    while words and words[0].lower().replace("'", "") in _BAD_CONCEPT_STARTS:
+        words.pop(0)
+    while words and words[-1].lower().replace("'", "") in _BAD_CONCEPT_STARTS:
+        words.pop()
+
+    words = words[:5]
+    normalized_words = [word.lower().replace("'", "") for word in words]
+    if any(word in _BAD_CONCEPT_VERBS for word in normalized_words):
+        return ""
+    if len(words) == 1 and len(words[0]) < 4:
+        return ""
+
+    concept = " ".join(words).strip()
+    normalized = concept.lower().replace("'", "")
+    if not concept or normalized in _CUSTOM_STOP_WORDS:
+        return ""
+    if normalized.startswith(("if ", "you ", "your ", "youre ", "not ")):
+        return ""
+    if len(concept) > 70 or not re.search(r"[A-Za-z]", concept):
+        return ""
+    if not concept.isupper():
+        concept = concept[:1].lower() + concept[1:]
+    return concept
+
+
+def extract_readable_concepts(
+    content: str,
+    num_concepts: int = 5,
+    preferred_topics: List[str] | None = None,
+) -> List[str]:
+    """Return short, human-readable concepts instead of raw sentence fragments."""
+    concepts: List[str] = []
+    seen = set()
+
+    def add(candidate: str) -> None:
+        concept = _clean_concept(candidate)
+        key = concept.lower()
+        if not concept or key in seen:
+            return
+        if any(key in existing or existing in key for existing in seen):
+            return
+        if concept:
+            seen.add(key)
+            concepts.append(concept)
+
+    for topic in preferred_topics or []:
+        add(topic)
+
+    if len(concepts) >= num_concepts:
+        return concepts[:num_concepts]
+
+    sentences = _split_sentences(content)
+    if not sentences:
+        add(content[:80])
+        return concepts[:num_concepts] if concepts else ["the main topic"]
+
+    for sentence in sentences:
+        lower_sentence = sentence.lower()
+        if "focus on " in lower_sentence:
+            focus_text = re.split(r"focus(?:es)? on ", sentence, maxsplit=1, flags=re.I)[-1]
+            for part in re.split(r"\band\b|,|;", focus_text):
+                add(" ".join(re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", part)[:3]))
+        if " with " in lower_sentence:
+            with_text = re.split(r"\bwith\b", sentence, maxsplit=1, flags=re.I)[-1]
+            add(" ".join(re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", with_text)[:3]))
+        for verb in sorted(_BAD_CONCEPT_VERBS, key=len, reverse=True):
+            match = re.search(rf"\b{re.escape(verb)}\b", sentence, flags=re.I)
+            if match:
+                leading_words = re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", sentence[:match.start()])
+                trailing_text = sentence[match.end():]
+                trailing_words = re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", trailing_text)
+                if verb not in {"focus", "focuses"}:
+                    add(" ".join(leading_words[-3:]))
+                if " with " in trailing_text.lower():
+                    with_text = re.split(r"\bwith\b", trailing_text, maxsplit=1, flags=re.I)[-1]
+                    add(" ".join(re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", with_text)[:3]))
+                else:
+                    add(" ".join(trailing_words[:3]))
+                break
+        if len(concepts) >= num_concepts:
+            return concepts[:num_concepts]
+
+    stop_words = sorted(ENGLISH_STOP_WORDS | _CUSTOM_STOP_WORDS)
+    try:
+        vectorizer = TfidfVectorizer(
+            max_features=80,
+            ngram_range=(1, 3),
+            stop_words=stop_words,
+            token_pattern=r"(?u)\b[A-Za-z][A-Za-z0-9'-]{2,}\b",
+        )
+        matrix = vectorizer.fit_transform(sentences)
+        feature_names = np.array(vectorizer.get_feature_names_out())
+        scores = np.asarray(matrix.sum(axis=0)).ravel()
+        phrase_lengths = np.array([len(str(name).split()) for name in feature_names])
+        ranked = feature_names[np.argsort(scores + (phrase_lengths * 0.05))[::-1]]
+        for phrase in ranked:
+            add(str(phrase))
+            if len(concepts) >= num_concepts:
+                break
+    except Exception:
+        pass
+
+    # Fallback: choose compact chunks from meaningful sentences, never the first
+    # three words blindly.
+    for sentence in sentences:
+        words = [
+            word
+            for word in re.findall(r"[A-Za-z][A-Za-z0-9'-]{2,}", sentence)
+            if word.lower().replace("'", "") not in _BAD_CONCEPT_STARTS
+        ]
+        for size in (3, 2, 1):
+            if len(words) >= size:
+                add(" ".join(words[:size]))
+                break
+        if len(concepts) >= num_concepts:
+            break
+
+    return concepts[:num_concepts] if concepts else ["the main topic"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -115,7 +263,8 @@ class QuestionGenerator:
                 "Provide an example of {concept} in practice",
             ],
             "analysis": [
-                "Compare {concept} with {related_concept}",
+                "What are the strengths, limitations, and tradeoffs of {concept}?",
+                "Compare {concept} with {related_concept} in this course context",
                 "What are the advantages and disadvantages of {concept}?",
                 "How would you address {challenge} using {concept}?",
             ],
@@ -141,7 +290,7 @@ class QuestionGenerator:
         questions = []
         
         # Extract concepts from material
-        concepts = self._extract_concepts(material.content)
+        concepts = self._extract_concepts(material.content, material.topics)
         
         if not concepts:
             return []
@@ -154,12 +303,15 @@ class QuestionGenerator:
             difficulty_level = self._get_difficulty(i, num_questions, difficulty)
             
             concept = concepts[i % len(concepts)]
+            related_concept = concepts[(i + 1) % len(concepts)] if len(concepts) > 1 else material.programme
             
             question_text = self._create_question(
                 q_type=q_type,
                 concept=concept,
                 material=material,
-                difficulty=difficulty_level
+                difficulty=difficulty_level,
+                related_concept=related_concept,
+                index=i,
             )
             
             questions.append({
@@ -174,20 +326,18 @@ class QuestionGenerator:
 
         return questions
 
-    def _extract_concepts(self, content: str, num_concepts: int = 5) -> List[str]:
+    def _extract_concepts(
+        self,
+        content: str,
+        topics: List[str] | None = None,
+        num_concepts: int = 12,
+    ) -> List[str]:
         """Extract key concepts from material"""
-        # Simple extraction: split by periods and take unique noun phrases
-        sentences = content.split('.')
-        concepts = []
-        
-        for sentence in sentences[:num_concepts]:
-            # Simple: extract first noun phrase as concept
-            words = sentence.strip().split()
-            if len(words) > 1:
-                concept = ' '.join(words[:3]).strip()
-                concepts.append(concept)
-        
-        return concepts if concepts else ["the main topic"]
+        return extract_readable_concepts(
+            content,
+            num_concepts=num_concepts,
+            preferred_topics=topics,
+        )
 
     def _get_difficulty(self, index: int, total: int, difficulty: str) -> str:
         """Determine question difficulty"""
@@ -209,20 +359,22 @@ class QuestionGenerator:
         q_type: str,
         concept: str,
         material: LearningMaterial,
-        difficulty: str
+        difficulty: str,
+        related_concept: str = "another key concept",
+        index: int = 0,
     ) -> str:
         """Create actual question text using templates"""
         templates = self.question_templates.get(q_type, [])
         if not templates:
             return f"What is {concept}?"
         
-        template = templates[0]
+        template = templates[index % len(templates)]
         
         # Simple substitution (production would use NLP)
         question = template.replace("{concept}", concept)
         question = question.replace("{domain}", material.programme)
         question = question.replace("{context}", "this module")
-        question = question.replace("{related_concept}", "related skills")
+        question = question.replace("{related_concept}", related_concept)
         question = question.replace("{scenario}", "a real-world situation")
         question = question.replace("{challenge}", "a typical problem")
         
@@ -486,12 +638,23 @@ class AssessmentEngine:
         if not material:
             return {"error": "Material not found"}
         
-        # Generate questions
-        questions = self.question_generator.generate_questions(
-            material=material,
-            num_questions=num_questions,
-            difficulty=difficulty
+        key_concepts = self.question_generator._extract_concepts(
+            material.content,
+            material.topics,
         )
+        questions = generate_questions_with_llm(
+            material_text=material.content,
+            key_concepts=key_concepts,
+            difficulty=difficulty,
+        )
+        generation_method = "llm" if questions else "local_fallback"
+        if questions is None:
+            log.info("LLM question generation unavailable; using local fallback")
+            questions = self.question_generator.generate_questions(
+                material=material,
+                num_questions=num_questions,
+                difficulty=difficulty
+            )
         
         if not questions:
             return {"error": "Could not generate questions"}
@@ -514,6 +677,8 @@ class AssessmentEngine:
             "assessment_id": assessment_id,
             "material_title": material.title,
             "num_questions": len(questions),
+            "generation_method": generation_method,
+            "internal_questions": questions,
             "questions": [
                 {
                     "question_id": q["question_id"],
@@ -575,6 +740,15 @@ class AssessmentEngine:
         results = []
         total_points = 0
         total_earned = 0
+        answers_for_llm = [
+            {
+                "question_id": answer.question_id,
+                "answer_text": answer.answer_text,
+            }
+            for answer in session.answers
+        ]
+        llm_grades = grade_answers_with_llm(session.questions, answers_for_llm)
+        grading_method = "llm_hybrid" if llm_grades else "local_only"
         
         for question in session.questions:
             # Find corresponding answer
@@ -586,11 +760,30 @@ class AssessmentEngine:
             if not answer_obj:
                 grade = {"score": 0, "points_earned": 0, "max_points": question["points"], "feedback": "Not answered"}
             else:
-                grade = self.answer_grader.grade_answer(
+                local_grade = self.answer_grader.grade_answer(
                     question=question,
                     answer=answer_obj.answer_text,
                     material=material
                 )
+                llm_grade = llm_grades.get(question["question_id"]) if llm_grades else None
+                if llm_grade:
+                    llm_score = float(llm_grade["score"]) / 100
+                    final_score = min(max((llm_score * 0.6) + (local_grade["score"] * 0.4), 0), 1)
+                    max_points = question.get("points", 1)
+                    grade = {
+                        **local_grade,
+                        "score": final_score,
+                        "points_earned": int(round(final_score * max_points)),
+                        "max_points": max_points,
+                        "feedback": llm_grade.get("feedback") or local_grade["feedback"],
+                        "llm_score": llm_score,
+                        "local_score": local_grade["score"],
+                        "llm_strengths": llm_grade.get("strengths", []),
+                        "llm_weaknesses": llm_grade.get("weaknesses", []),
+                        "llm_confidence": llm_grade.get("confidence_score"),
+                    }
+                else:
+                    grade = local_grade
             
             total_earned += grade["points_earned"]
             total_points += grade["max_points"]
@@ -620,7 +813,9 @@ class AssessmentEngine:
             "passed": percentage >= 70,  # 70% pass threshold
             "overall_feedback": overall_feedback,
             "detailed_results": results,
-            "completed_at": session.completed_at
+            "completed_at": session.completed_at,
+            "grading_method": grading_method,
+            "generation_method": session.questions[0].get("generation_method", "local_fallback"),
         }
 
     def _generate_overall_feedback(self, percentage: float, programme: str) -> str:
